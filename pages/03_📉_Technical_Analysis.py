@@ -8,13 +8,23 @@ from components.navigation import (
     show_page_navigation,
 )
 
+from components.indicator_help import (
+    show_indicator_help,
+)
+
 from services.stock_service import (
     analyze_stock,
 )
 
-from utils.indicator_guide import (
-    get_indicator_tooltip,
-    show_indicator_guide,
+
+# ============================================================
+# PAGE
+# ============================================================
+
+st.set_page_config(
+    page_title="Technical Analysis",
+    page_icon="📉",
+    layout="wide",
 )
 
 
@@ -23,31 +33,52 @@ CURRENT_PAGE = (
 )
 
 
-# ============================================================
-# PAGE HEADER
-# ============================================================
-
 page_header(
     "📉 Technical Analysis",
-    CURRENT_PAGE
+    CURRENT_PAGE,
 )
 
 
 # ============================================================
-# STOCK DATA
+# STOCK
 # ============================================================
 
 stock = get_selected_stock()
 
-data = analyze_stock(
-    stock
-)
+
+# ============================================================
+# ANALYSIS
+# ============================================================
+
+try:
+
+    data = analyze_stock(
+        stock
+    )
+
+except Exception as error:
+
+    st.error(
+        f"Unable to analyze {stock}: {error}"
+    )
+
+    st.stop()
+
+
+if data.empty:
+
+    st.error(
+        "No analysis data available."
+    )
+
+    st.stop()
+
 
 latest = data.iloc[-1]
 
 
 # ============================================================
-# INDICATOR SELECTOR
+# INDICATOR
 # ============================================================
 
 indicator = st.selectbox(
@@ -55,12 +86,13 @@ indicator = st.selectbox(
     [
         "RSI",
         "MACD",
+        "MACD Histogram",
         "Bollinger Bands",
         "Moving Averages",
         "VWAP",
         "Supertrend",
         "ATR",
-    ]
+    ],
 )
 
 
@@ -73,21 +105,20 @@ if indicator == "RSI":
     st.metric(
         "RSI",
         f"{latest['RSI']:.2f}",
-        help=get_indicator_tooltip("RSI")
+        help=(
+            "RSI measures momentum on a "
+            "0–100 scale."
+        ),
     )
 
     st.line_chart(
         data["RSI"]
     )
 
-    with st.expander(
-        "📚 RSI — Complete Study Guide"
-    ):
-
-        show_indicator_guide(
-            st,
-            "RSI"
-        )
+    show_indicator_help(
+        "RSI",
+        expanded=True,
+    )
 
 
 # ============================================================
@@ -105,18 +136,51 @@ elif indicator == "MACD":
         ]
     )
 
-    with st.expander(
-        "📚 MACD — Complete Study Guide"
-    ):
+    show_indicator_help(
+        "MACD",
+        expanded=True,
+    )
 
-        show_indicator_guide(
-            st,
-            "MACD"
+    if "MACD_Histogram" in data.columns:
+
+        show_indicator_help(
+            "MACD Histogram"
         )
 
 
 # ============================================================
-# BOLLINGER BANDS
+# MACD HISTOGRAM
+# ============================================================
+
+elif indicator == "MACD Histogram":
+
+    if "MACD_Histogram" in data.columns:
+
+        st.line_chart(
+            data[
+                "MACD_Histogram"
+            ]
+        )
+
+    else:
+
+        histogram = (
+            data["MACD"]
+            - data["MACD_Signal"]
+        )
+
+        st.line_chart(
+            histogram
+        )
+
+    show_indicator_help(
+        "MACD Histogram",
+        expanded=True,
+    )
+
+
+# ============================================================
+# BOLLINGER
 # ============================================================
 
 elif indicator == "Bollinger Bands":
@@ -132,14 +196,10 @@ elif indicator == "Bollinger Bands":
         ]
     )
 
-    with st.expander(
-        "📚 Bollinger Bands — Complete Study Guide"
-    ):
-
-        show_indicator_guide(
-            st,
-            "Bollinger Bands"
-        )
+    show_indicator_help(
+        "Bollinger Bands",
+        expanded=True,
+    )
 
 
 # ============================================================
@@ -148,35 +208,31 @@ elif indicator == "Bollinger Bands":
 
 elif indicator == "Moving Averages":
 
+    columns = [
+        "Close",
+        "SMA_20",
+        "SMA_50",
+        "EMA_20",
+    ]
+
+    if "SMA_200" in data.columns:
+
+        columns.append(
+            "SMA_200"
+        )
+
     st.line_chart(
-        data[
-            [
-                "Close",
-                "SMA_20",
-                "SMA_50",
-                "SMA_200",
-                "EMA_20",
-            ]
-        ]
+        data[columns]
     )
 
-    with st.expander(
-        "📚 Moving Averages — Complete Study Guide"
-    ):
+    show_indicator_help(
+        "SMA",
+        expanded=True,
+    )
 
-        show_indicator_guide(
-            st,
-            "SMA"
-        )
-
-        st.markdown(
-            "---"
-        )
-
-        show_indicator_guide(
-            st,
-            "EMA"
-        )
+    show_indicator_help(
+        "EMA"
+    )
 
 
 # ============================================================
@@ -184,12 +240,6 @@ elif indicator == "Moving Averages":
 # ============================================================
 
 elif indicator == "VWAP":
-
-    st.metric(
-        "VWAP",
-        f"{latest['VWAP']:.2f}",
-        help=get_indicator_tooltip("VWAP")
-    )
 
     st.line_chart(
         data[
@@ -200,14 +250,10 @@ elif indicator == "VWAP":
         ]
     )
 
-    with st.expander(
-        "📚 VWAP — Complete Study Guide"
-    ):
-
-        show_indicator_guide(
-            st,
-            "VWAP"
-        )
+    show_indicator_help(
+        "VWAP",
+        expanded=True,
+    )
 
 
 # ============================================================
@@ -215,12 +261,6 @@ elif indicator == "VWAP":
 # ============================================================
 
 elif indicator == "Supertrend":
-
-    st.metric(
-        "Supertrend",
-        f"{latest['Supertrend']:.2f}",
-        help=get_indicator_tooltip("Supertrend")
-    )
 
     st.line_chart(
         data[
@@ -231,14 +271,10 @@ elif indicator == "Supertrend":
         ]
     )
 
-    with st.expander(
-        "📚 Supertrend — Complete Study Guide"
-    ):
-
-        show_indicator_guide(
-            st,
-            "Supertrend"
-        )
+    show_indicator_help(
+        "Supertrend",
+        expanded=True,
+    )
 
 
 # ============================================================
@@ -247,71 +283,14 @@ elif indicator == "Supertrend":
 
 elif indicator == "ATR":
 
-    st.metric(
-        "ATR",
-        f"{latest['ATR']:.2f}",
-        help=get_indicator_tooltip("ATR")
-    )
-
     st.line_chart(
         data["ATR"]
     )
 
-    with st.expander(
-        "📚 ATR — Complete Study Guide"
-    ):
-
-        show_indicator_guide(
-            st,
-            "ATR"
-        )
-
-
-# ============================================================
-# COMPLETE STUDY LIBRARY
-# ============================================================
-
-st.divider()
-
-with st.expander(
-    "🎓 Open Complete Technical Indicator Library"
-):
-
-    st.info(
-        "Use this section to study all indicators "
-        "used throughout IndianStockAnalyzer."
-    )
-
-    for name in [
-        "RSI",
-        "MACD",
-        "VWAP",
-        "Supertrend",
-        "SMA",
-        "EMA",
-        "Bollinger Bands",
+    show_indicator_help(
         "ATR",
-        "ADX",
-        "Stochastic",
-        "CCI",
-        "MFI",
-        "OBV",
-        "Volume",
-        "Volume Ratio",
-        "Momentum",
-        "ROC",
-        "Williams %R",
-        "Candlestick",
-    ]:
-
-        with st.expander(
-            f"📖 {name}"
-        ):
-
-            show_indicator_guide(
-                st,
-                name
-            )
+        expanded=True,
+    )
 
 
 # ============================================================

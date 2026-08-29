@@ -1,447 +1,357 @@
 # pages/01_📊_Dashboard.py
 
 import streamlit as st
-import pandas as pd
+
+from services.stock_service import (
+    analyze_stock,
+    calculate_recommendation,
+)
 
 from components.navigation import (
     get_selected_stock,
+    set_selected_stock,
     page_header,
     show_page_navigation,
 )
 
-from services.stock_service import analyze_stock
+from components.charts import (
+    create_price_chart,
+    create_heikin_ashi_chart,
+)
 
-from utils.indicator_guide import (
-    get_indicator_tooltip,
-    show_indicator_guide,
-    get_trading_guide,
+from components.indicator_help import (
+    show_indicator_help,
+)
+
+from analytics.technical_indicators import (
+    calculate_heikin_ashi,
 )
 
 
-CURRENT_PAGE = "pages/01_📊_Dashboard.py"
+# ============================================================
+# PAGE
+# ============================================================
+
+st.set_page_config(
+    page_title="Dashboard",
+    page_icon="📊",
+    layout="wide",
+)
 
 
-# ============================================================
-# PAGE HEADER
-# ============================================================
+CURRENT_PAGE = (
+    "pages/01_📊_Dashboard.py"
+)
+
 
 page_header(
-    "📊 Indian Stock Analyzer Dashboard",
-    CURRENT_PAGE
+    "📊 Dashboard",
+    CURRENT_PAGE,
 )
 
 
 # ============================================================
-# SELECTED STOCK
+# STOCK INPUT
 # ============================================================
 
-stock = get_selected_stock()
+current_stock = get_selected_stock()
 
-if not stock:
-    st.warning("Please select a stock.")
-    st.stop()
+symbol = st.text_input(
+    "NSE Stock Symbol",
+    value=current_stock.replace(
+        ".NS",
+        "",
+    ),
+)
+
+
+if st.button(
+    "🔄 Load Stock",
+    type="primary",
+):
+
+    set_selected_stock(
+        symbol
+    )
+
+    st.rerun()
+
+
+selected_stock = get_selected_stock()
 
 
 # ============================================================
-# LOAD DATA
+# ANALYZE
 # ============================================================
 
 try:
-    data = analyze_stock(stock)
-except Exception as e:
-    st.error(f"Unable to analyze {stock}: {e}")
+
+    with st.spinner(
+        f"Analyzing {selected_stock}..."
+    ):
+
+        data = analyze_stock(
+            selected_stock
+        )
+
+except Exception as error:
+
+    st.error(
+        f"Unable to analyze {selected_stock}: {error}"
+    )
+
     st.stop()
 
 
 if data is None or data.empty:
-    st.warning(
-        f"No analysis data available for {stock}."
+
+    st.error(
+        "No analysis data available."
     )
+
     st.stop()
+
+
+# ============================================================
+# RECOMMENDATION
+# ============================================================
+
+(
+    recommendation,
+    confidence,
+    reasons,
+) = calculate_recommendation(
+    data
+)
 
 
 latest = data.iloc[-1]
 
 
 # ============================================================
-# HELPER
+# PRICE
 # ============================================================
 
-def safe_value(column, default=None):
-
-    if column not in data.columns:
-        return default
-
-    value = latest[column]
-
-    if pd.isna(value):
-        return default
-
-    return value
+price = float(
+    latest["Close"]
+)
 
 
-# ============================================================
-# STOCK HEADER
-# ============================================================
+previous = (
+    float(
+        data["Close"].iloc[-2]
+    )
+    if len(data) > 1
+    else price
+)
 
-st.title(f"📈 {stock}")
 
-st.caption(
-    "Technical analysis dashboard for the selected Indian stock."
+change = (
+    price - previous
+)
+
+
+change_pct = (
+    change / previous * 100
+    if previous
+    else 0
 )
 
 
 # ============================================================
-# BASIC PRICE METRICS
+# KEY METRICS
 # ============================================================
 
-st.subheader("💰 Price Overview")
-
-c1, c2, c3, c4 = st.columns(4)
-
-
-close_price = safe_value("Close", 0)
-open_price = safe_value("Open", 0)
-high_price = safe_value("High", 0)
-low_price = safe_value("Low", 0)
+c1, c2, c3, c4, c5 = st.columns(5)
 
 
 c1.metric(
-    "Current Price",
-    f"₹{close_price:,.2f}",
+    "Price",
+    f"₹{price:,.2f}",
+    f"{change_pct:+.2f}%",
     help=(
-        "Latest available closing price of the selected stock."
-    )
+        "Latest closing price and change "
+        "from the previous available candle."
+    ),
 )
 
 
 c2.metric(
-    "Open",
-    f"₹{open_price:,.2f}",
+    "Recommendation",
+    recommendation,
     help=(
-        "Opening price of the latest available trading period."
-    )
+        "Technical recommendation generated "
+        "by the application's scoring engine."
+    ),
 )
 
 
 c3.metric(
-    "Day High",
-    f"₹{high_price:,.2f}",
+    "Confidence",
+    f"{confidence:.0f}%",
     help=(
-        "Highest traded price during the latest available period."
-    )
+        "Model-strength score. "
+        "This is NOT the probability of profit."
+    ),
 )
 
 
 c4.metric(
-    "Day Low",
-    f"₹{low_price:,.2f}",
-    help=(
-        "Lowest traded price during the latest available period."
-    )
-)
-
-
-# ============================================================
-# TREND INDICATORS
-# ============================================================
-
-st.subheader("📈 Trend Indicators")
-
-c1, c2, c3, c4 = st.columns(4)
-
-
-sma20 = safe_value("SMA_20")
-sma50 = safe_value("SMA_50")
-sma200 = safe_value("SMA_200")
-ema20 = safe_value("EMA_20")
-
-
-c1.metric(
-    "SMA 20",
-    f"₹{sma20:,.2f}" if sma20 is not None else "N/A",
-    help=get_indicator_tooltip("SMA")
-)
-
-
-c2.metric(
-    "SMA 50",
-    f"₹{sma50:,.2f}" if sma50 is not None else "N/A",
-    help=get_indicator_tooltip("SMA")
-)
-
-
-c3.metric(
-    "SMA 200",
-    f"₹{sma200:,.2f}" if sma200 is not None else "N/A",
-    help=get_indicator_tooltip("SMA")
-)
-
-
-c4.metric(
-    "EMA 20",
-    f"₹{ema20:,.2f}" if ema20 is not None else "N/A",
-    help=get_indicator_tooltip("EMA")
-)
-
-
-# ============================================================
-# MOMENTUM INDICATORS
-# ============================================================
-
-st.subheader("⚡ Momentum Indicators")
-
-c1, c2, c3 = st.columns(3)
-
-
-rsi = safe_value("RSI")
-macd = safe_value("MACD")
-macd_signal = safe_value("MACD_Signal")
-
-
-c1.metric(
     "RSI",
-    f"{rsi:.2f}" if rsi is not None else "N/A",
-    help=get_indicator_tooltip("RSI")
-)
-
-
-c2.metric(
-    "MACD",
-    f"{macd:.2f}" if macd is not None else "N/A",
-    help=get_indicator_tooltip("MACD")
-)
-
-
-c3.metric(
-    "MACD Signal",
-    f"{macd_signal:.2f}" if macd_signal is not None else "N/A",
-    help=get_indicator_tooltip("MACD")
-)
-
-
-# ============================================================
-# TREND / VOLATILITY
-# ============================================================
-
-st.subheader("🌊 Trend & Volatility")
-
-c1, c2, c3 = st.columns(3)
-
-
-supertrend = safe_value("Supertrend")
-atr = safe_value("ATR")
-vwap = safe_value("VWAP")
-
-
-c1.metric(
-    "Supertrend",
-    (
-        f"₹{supertrend:,.2f}"
-        if supertrend is not None
-        else "N/A"
+    f"{latest['RSI']:.2f}",
+    help=(
+        "RSI measures momentum on a 0–100 scale."
     ),
-    help=get_indicator_tooltip("Supertrend")
 )
 
 
-c2.metric(
-    "ATR",
-    f"{atr:.2f}" if atr is not None else "N/A",
-    help=get_indicator_tooltip("ATR")
+trend_text = (
+    "Bullish"
+    if latest["Supertrend_Direction"] == 1
+    else "Bearish"
 )
 
 
-c3.metric(
-    "VWAP",
-    (
-        f"₹{vwap:,.2f}"
-        if vwap is not None
-        else "N/A"
+c5.metric(
+    "Trend",
+    trend_text,
+    help=(
+        "Directional assessment based on "
+        "the Supertrend indicator."
     ),
-    help=get_indicator_tooltip("VWAP")
 )
 
 
 # ============================================================
-# VOLUME
+# RECOMMENDATION REASONS
 # ============================================================
 
-st.subheader("📊 Volume")
-
-c1, c2 = st.columns(2)
-
-
-volume = safe_value("Volume", 0)
-volume_ratio = safe_value("Volume_Ratio")
-
-
-c1.metric(
-    "Volume",
-    f"{volume:,.0f}",
-    help=get_indicator_tooltip("Volume")
+st.subheader(
+    "🎯 Why this recommendation?"
 )
 
 
-c2.metric(
-    "Volume Ratio",
-    (
-        f"{volume_ratio:.2f}x"
-        if volume_ratio is not None
-        else "N/A"
-    ),
-    help=get_indicator_tooltip("Volume Ratio")
-)
+if reasons:
 
+    for reason in reasons:
 
-# ============================================================
-# PRICE CHART
-# ============================================================
+        st.write(
+            f"• {reason}"
+        )
 
-st.subheader("📈 Price Chart")
+else:
 
-chart_columns = ["Close"]
-
-for column in [
-    "SMA_20",
-    "SMA_50",
-    "SMA_200",
-    "EMA_20",
-]:
-    if column in data.columns:
-        chart_columns.append(column)
-
-
-st.line_chart(
-    data[chart_columns]
-)
-
-
-# ============================================================
-# BOLLINGER BANDS
-# ============================================================
-
-bollinger_columns = [
-    "Close"
-]
-
-for column in [
-    "BB_Upper",
-    "BB_Middle",
-    "BB_Lower",
-]:
-
-    if column in data.columns:
-        bollinger_columns.append(column)
-
-
-if len(bollinger_columns) > 1:
-
-    st.subheader("🌊 Bollinger Bands")
-
-    st.line_chart(
-        data[bollinger_columns]
+    st.info(
+        "No recommendation reasons available."
     )
 
 
 # ============================================================
-# TECHNICAL INDICATOR STUDY GUIDE
+# EDUCATIONAL GUIDES
+# ============================================================
+
+st.subheader(
+    "ℹ️ Understand the Signals"
+)
+
+
+c1, c2, c3 = st.columns(3)
+
+
+with c1:
+
+    show_indicator_help(
+        "RSI"
+    )
+
+
+with c2:
+
+    show_indicator_help(
+        "Supertrend"
+    )
+
+
+with c3:
+
+    show_indicator_help(
+        "Recommendation"
+    )
+
+
+# ============================================================
+# CHART TYPE
 # ============================================================
 
 st.divider()
 
-with st.expander(
-    "📚 Dashboard — Technical Indicator Study Guide"
-):
+
+chart_type = st.selectbox(
+    "Chart Type",
+    [
+        "Candlestick",
+        "Heikin Ashi",
+    ],
+)
+
+
+if chart_type == "Candlestick":
+
+    fig = create_price_chart(
+        data,
+        show_bollinger=True,
+        show_sma=True,
+        show_ema=True,
+    )
+
+else:
+
+    ha = calculate_heikin_ashi(
+        data
+    )
+
+    fig = create_heikin_ashi_chart(
+        ha
+    )
+
+
+st.plotly_chart(
+    fig,
+    use_container_width=True,
+)
+
+
+# ============================================================
+# CANDLE PATTERN
+# ============================================================
+
+st.subheader(
+    "🕯️ Latest Candlestick Pattern"
+)
+
+
+candlestick = latest.get(
+    "Candlestick",
+    "None",
+)
+
+
+if candlestick != "None":
+
+    st.success(
+        f"Detected: **{candlestick}**"
+    )
+
+else:
 
     st.info(
-        "Hover over individual metrics for quick explanations. "
-        "Use the sections below for detailed learning."
+        "No major candlestick pattern detected."
     )
 
-    with st.expander("📖 RSI"):
-        show_indicator_guide(st, "RSI")
 
-    with st.expander("📖 MACD"):
-        show_indicator_guide(st, "MACD")
-
-    with st.expander("📖 SMA"):
-        show_indicator_guide(st, "SMA")
-
-    with st.expander("📖 EMA"):
-        show_indicator_guide(st, "EMA")
-
-    with st.expander("📖 VWAP"):
-        show_indicator_guide(st, "VWAP")
-
-    with st.expander("📖 Supertrend"):
-        show_indicator_guide(st, "Supertrend")
-
-    with st.expander("📖 ATR"):
-        show_indicator_guide(st, "ATR")
-
-    with st.expander("📖 Bollinger Bands"):
-        show_indicator_guide(
-            st,
-            "Bollinger Bands"
-        )
-
-    with st.expander("📖 Volume"):
-        show_indicator_guide(
-            st,
-            "Volume"
-        )
-
-    with st.expander("📖 Volume Ratio"):
-        show_indicator_guide(
-            st,
-            "Volume Ratio"
-        )
-
-
-# ============================================================
-# BUY / SELL / HOLD EDUCATION
-# ============================================================
-
-with st.expander(
-    "🎯 How to Study BUY / SELL / HOLD Signals"
-):
-
-    tab1, tab2, tab3 = st.tabs(
-        [
-            "🟢 BUY Study",
-            "🔴 SELL Study",
-            "🟡 HOLD Study",
-        ]
-    )
-
-    with tab1:
-        st.markdown(
-            get_trading_guide("BUY")
-        )
-
-    with tab2:
-        st.markdown(
-            get_trading_guide("SELL")
-        )
-
-    with tab3:
-        st.markdown(
-            get_trading_guide("HOLD")
-        )
-
-
-# ============================================================
-# RISK MANAGEMENT
-# ============================================================
-
-with st.expander(
-    "⚠️ Risk Management Study Guide"
-):
-
-    st.markdown(
-        get_trading_guide("RISK")
-    )
+show_indicator_help(
+    "Candlestick"
+)
 
 
 # ============================================================

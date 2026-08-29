@@ -8,13 +8,23 @@ from components.navigation import (
     show_page_navigation,
 )
 
+from components.indicator_help import (
+    show_indicator_help,
+)
+
 from services.stock_service import (
     analyze_stock,
 )
 
-from utils.indicator_guide import (
-    get_indicator_tooltip,
-    show_indicator_guide,
+
+# ============================================================
+# PAGE
+# ============================================================
+
+st.set_page_config(
+    page_title="Volume Analysis",
+    page_icon="📊",
+    layout="wide",
 )
 
 
@@ -23,32 +33,55 @@ CURRENT_PAGE = (
 )
 
 
-# ============================================================
-# HEADER
-# ============================================================
-
 page_header(
     "📊 Volume Analysis",
-    CURRENT_PAGE
+    CURRENT_PAGE,
 )
 
 
 # ============================================================
-# DATA
+# STOCK
 # ============================================================
 
 stock = get_selected_stock()
 
-data = analyze_stock(
-    stock
-)
+
+# ============================================================
+# ANALYSIS
+# ============================================================
+
+try:
+
+    data = analyze_stock(
+        stock
+    )
+
+except Exception as error:
+
+    st.error(
+        f"Unable to analyze {stock}: {error}"
+    )
+
+    st.stop()
+
+
+if data.empty:
+
+    st.error(
+        "No analysis data available."
+    )
+
+    st.stop()
+
 
 latest = data.iloc[-1]
 
 
-volume_ratio = latest.get(
-    "Volume_Ratio",
-    0
+volume_ratio = float(
+    latest.get(
+        "Volume_Ratio",
+        0,
+    )
 )
 
 
@@ -62,24 +95,31 @@ c1, c2 = st.columns(2)
 c1.metric(
     "Volume",
     f"{latest['Volume']:,.0f}",
-    help=get_indicator_tooltip("Volume")
+    help=(
+        "Number of shares traded "
+        "during the selected period."
+    ),
 )
 
 
 c2.metric(
     "Volume / 20D Avg",
     f"{volume_ratio:.2f}x",
-    help=get_indicator_tooltip("Volume Ratio")
+    help=(
+        "Current volume divided by "
+        "20-period average volume."
+    ),
 )
 
 
 # ============================================================
-# CHART
+# VOLUME CHART
 # ============================================================
 
 st.subheader(
     "📊 Volume Chart"
 )
+
 
 st.bar_chart(
     data["Volume"]
@@ -87,69 +127,36 @@ st.bar_chart(
 
 
 # ============================================================
-# VOLUME STUDY GUIDE
+# EDUCATION
 # ============================================================
 
-with st.expander(
-    "📚 Volume Indicator Study Guide"
-):
+show_indicator_help(
+    "Volume",
+    expanded=True,
+)
 
-    show_indicator_guide(
-        st,
-        "Volume"
-    )
 
-    st.markdown(
-        "---"
-    )
-
-    show_indicator_guide(
-        st,
-        "Volume Ratio"
-    )
+show_indicator_help(
+    "Volume Ratio"
+)
 
 
 # ============================================================
-# VOLUME CONFIRMATION
+# APPLICATION RULE
 # ============================================================
 
-with st.expander(
-    "🎯 How to Study Volume Confirmation"
-):
+if volume_ratio >= 1.5:
 
-    st.markdown(
-        """
-### 🟢 Bullish confirmation
+    st.success(
+        f"📈 Volume spike detected: "
+        f"{volume_ratio:.2f}x the 20-period average."
+    )
 
-Price breakout
+else:
 
-+
-
-High volume
-
-can provide stronger confirmation than a breakout with weak volume.
-
-### 🔴 Bearish confirmation
-
-Price breakdown
-
-+
-
-High volume
-
-can strengthen the bearish interpretation.
-
-### 📌 Application rule
-
-Volume >= 1.5 × 20-day average
-
-is treated as a volume spike.
-
-### ⚠️ Important
-
-High volume by itself does not determine direction.
-Always study it together with price movement.
-"""
+    st.info(
+        f"Normal volume: "
+        f"{volume_ratio:.2f}x the 20-period average."
     )
 
 
