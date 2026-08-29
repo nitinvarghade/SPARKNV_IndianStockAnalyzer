@@ -2,10 +2,12 @@
 
 import streamlit as st
 
+
 from services.stock_service import (
     analyze_stock,
     calculate_recommendation,
 )
+
 
 from components.navigation import (
     get_selected_stock,
@@ -14,17 +16,14 @@ from components.navigation import (
     show_page_navigation,
 )
 
+
 from components.charts import (
     create_price_chart,
-    create_heikin_ashi_chart,
 )
+
 
 from components.indicator_help import (
     show_indicator_help,
-)
-
-from analytics.technical_indicators import (
-    calculate_heikin_ashi,
 )
 
 
@@ -51,16 +50,21 @@ page_header(
 
 
 # ============================================================
-# STOCK INPUT
+# SELECT STOCK
 # ============================================================
 
 current_stock = get_selected_stock()
 
-symbol = st.text_input(
+
+input_symbol = st.text_input(
     "NSE Stock Symbol",
     value=current_stock.replace(
         ".NS",
         "",
+    ),
+    help=(
+        "Enter NSE symbol, for example "
+        "RELIANCE, TCS, INFY."
     ),
 )
 
@@ -70,18 +74,32 @@ if st.button(
     type="primary",
 ):
 
-    set_selected_stock(
-        symbol
+    clean_symbol = (
+        input_symbol
+        .strip()
+        .upper()
     )
 
-    st.rerun()
+    if clean_symbol:
+
+        if not clean_symbol.endswith(
+            ".NS"
+        ):
+
+            clean_symbol += ".NS"
+
+        set_selected_stock(
+            clean_symbol
+        )
+
+        st.rerun()
 
 
 selected_stock = get_selected_stock()
 
 
 # ============================================================
-# ANALYZE
+# LOAD DATA
 # ============================================================
 
 try:
@@ -97,7 +115,8 @@ try:
 except Exception as error:
 
     st.error(
-        f"Unable to analyze {selected_stock}: {error}"
+        f"Unable to analyze "
+        f"{selected_stock}: {error}"
     )
 
     st.stop()
@@ -106,10 +125,14 @@ except Exception as error:
 if data is None or data.empty:
 
     st.error(
-        "No analysis data available."
+        f"No data available for "
+        f"{selected_stock}."
     )
 
     st.stop()
+
+
+latest = data.iloc[-1]
 
 
 # ============================================================
@@ -125,9 +148,6 @@ if data is None or data.empty:
 )
 
 
-latest = data.iloc[-1]
-
-
 # ============================================================
 # PRICE
 # ============================================================
@@ -137,29 +157,33 @@ price = float(
 )
 
 
-previous = (
-    float(
+if len(data) > 1:
+
+    previous_price = float(
         data["Close"].iloc[-2]
     )
-    if len(data) > 1
-    else price
-)
+
+else:
+
+    previous_price = price
 
 
 change = (
-    price - previous
+    price - previous_price
 )
 
 
 change_pct = (
-    change / previous * 100
-    if previous
+    change
+    / previous_price
+    * 100
+    if previous_price
     else 0
 )
 
 
 # ============================================================
-# KEY METRICS
+# METRICS
 # ============================================================
 
 c1, c2, c3, c4, c5 = st.columns(5)
@@ -169,20 +193,12 @@ c1.metric(
     "Price",
     f"₹{price:,.2f}",
     f"{change_pct:+.2f}%",
-    help=(
-        "Latest closing price and change "
-        "from the previous available candle."
-    ),
 )
 
 
 c2.metric(
     "Recommendation",
     recommendation,
-    help=(
-        "Technical recommendation generated "
-        "by the application's scoring engine."
-    ),
 )
 
 
@@ -190,68 +206,56 @@ c3.metric(
     "Confidence",
     f"{confidence:.0f}%",
     help=(
-        "Model-strength score. "
-        "This is NOT the probability of profit."
+        "Technical model strength. "
+        "It is NOT probability of profit."
     ),
 )
 
 
 c4.metric(
     "RSI",
-    f"{latest['RSI']:.2f}",
-    help=(
-        "RSI measures momentum on a 0–100 scale."
-    ),
+    f"{latest.get('RSI', 0):.2f}",
 )
 
 
-trend_text = (
+trend = (
     "Bullish"
-    if latest["Supertrend_Direction"] == 1
+    if latest.get(
+        "Supertrend_Direction",
+        0,
+    ) == 1
     else "Bearish"
 )
 
 
 c5.metric(
     "Trend",
-    trend_text,
-    help=(
-        "Directional assessment based on "
-        "the Supertrend indicator."
-    ),
+    trend,
 )
 
 
 # ============================================================
-# RECOMMENDATION REASONS
+# REASONS
 # ============================================================
 
 st.subheader(
-    "🎯 Why this recommendation?"
+    "🎯 Recommendation Signals"
 )
 
 
-if reasons:
+for reason in reasons:
 
-    for reason in reasons:
-
-        st.write(
-            f"• {reason}"
-        )
-
-else:
-
-    st.info(
-        "No recommendation reasons available."
+    st.write(
+        f"• {reason}"
     )
 
 
 # ============================================================
-# EDUCATIONAL GUIDES
+# EDUCATIONAL SECTION
 # ============================================================
 
 st.subheader(
-    "ℹ️ Understand the Signals"
+    "ℹ️ Indicator Guide"
 )
 
 
@@ -268,34 +272,30 @@ with c1:
 with c2:
 
     show_indicator_help(
-        "Supertrend"
+        "MACD"
     )
 
 
 with c3:
 
     show_indicator_help(
-        "Recommendation"
+        "Supertrend"
     )
 
 
 # ============================================================
-# CHART TYPE
+# PRICE CHART
 # ============================================================
 
 st.divider()
 
 
-chart_type = st.selectbox(
-    "Chart Type",
-    [
-        "Candlestick",
-        "Heikin Ashi",
-    ],
+st.subheader(
+    "📈 Price Chart"
 )
 
 
-if chart_type == "Candlestick":
+try:
 
     fig = create_price_chart(
         data,
@@ -304,25 +304,20 @@ if chart_type == "Candlestick":
         show_ema=True,
     )
 
-else:
-
-    ha = calculate_heikin_ashi(
-        data
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
     )
 
-    fig = create_heikin_ashi_chart(
-        ha
+except Exception as error:
+
+    st.warning(
+        f"Unable to display chart: {error}"
     )
-
-
-st.plotly_chart(
-    fig,
-    use_container_width=True,
-)
 
 
 # ============================================================
-# CANDLE PATTERN
+# CANDLESTICK PATTERN
 # ============================================================
 
 st.subheader(
@@ -330,22 +325,70 @@ st.subheader(
 )
 
 
-candlestick = latest.get(
-    "Candlestick",
-    "None",
-)
+pattern = "None"
 
 
-if candlestick != "None":
+pattern_columns = [
+    "Doji",
+    "Hammer",
+    "Inverted_Hammer",
+    "Shooting_Star",
+    "Bullish_Engulfing",
+    "Bearish_Engulfing",
+    "Bullish_Harami",
+    "Bearish_Harami",
+    "Bullish_Marubozu",
+    "Bearish_Marubozu",
+    "Morning_Star",
+    "Evening_Star",
+    "Piercing_Pattern",
+    "Dark_Cloud_Cover",
+    "Three_White_Soldiers",
+    "Three_Black_Crows",
+]
+
+
+patterns = []
+
+
+for column in pattern_columns:
+
+    if column not in data.columns:
+        continue
+
+    try:
+
+        if bool(
+            latest[column]
+        ):
+
+            patterns.append(
+                column.replace(
+                    "_",
+                    " ",
+                )
+            )
+
+    except Exception:
+
+        continue
+
+
+if patterns:
+
+    pattern = ", ".join(
+        patterns
+    )
 
     st.success(
-        f"Detected: **{candlestick}**"
+        f"Detected: **{pattern}**"
     )
 
 else:
 
     st.info(
-        "No major candlestick pattern detected."
+        "No major candlestick pattern "
+        "detected on the latest candle."
     )
 
 
