@@ -8,10 +8,6 @@ from components.navigation import (
     show_page_navigation,
 )
 
-from components.indicator_help import (
-    show_indicator_help,
-)
-
 from services.stock_service import (
     analyze_stock,
 )
@@ -22,17 +18,6 @@ from analytics.volatility import (
 )
 
 
-# ============================================================
-# PAGE
-# ============================================================
-
-st.set_page_config(
-    page_title="Volatility Analysis",
-    page_icon="🌊",
-    layout="wide",
-)
-
-
 CURRENT_PAGE = (
     "pages/06_🌊_Volatility.py"
 )
@@ -40,43 +25,16 @@ CURRENT_PAGE = (
 
 page_header(
     "🌊 Volatility Analysis",
-    CURRENT_PAGE,
+    CURRENT_PAGE
 )
 
-
-# ============================================================
-# STOCK
-# ============================================================
 
 stock = get_selected_stock()
 
 
-# ============================================================
-# ANALYSIS
-# ============================================================
-
-try:
-
-    data = analyze_stock(
-        stock
-    )
-
-except Exception as error:
-
-    st.error(
-        f"Unable to analyze {stock}: {error}"
-    )
-
-    st.stop()
-
-
-if data.empty:
-
-    st.error(
-        "No analysis data available."
-    )
-
-    st.stop()
+data = analyze_stock(
+    stock
+)
 
 
 latest = data.iloc[-1]
@@ -92,46 +50,24 @@ status = volatility_status(
 )
 
 
-# ============================================================
-# METRICS
-# ============================================================
-
 c1, c2, c3 = st.columns(3)
 
 
 c1.metric(
     "Volatility",
-    f"{volatility:.2f}%",
-    help=(
-        "Volatility measures the size of "
-        "price movements, not direction."
-    ),
+    f"{volatility:.2f}%"
 )
-
 
 c2.metric(
     "Status",
-    status,
-    help=(
-        "Volatility classification calculated "
-        "by the application."
-    ),
+    status
 )
-
 
 c3.metric(
     "ATR",
-    f"{latest['ATR']:.2f}",
-    help=(
-        "ATR measures average price movement "
-        "and does not predict direction."
-    ),
+    f"{latest['ATR']:.2f}"
 )
 
-
-# ============================================================
-# BOLLINGER
-# ============================================================
 
 st.subheader(
     "📈 Bollinger Bands"
@@ -150,29 +86,32 @@ st.line_chart(
 )
 
 
-# ============================================================
-# EDUCATION
-# ============================================================
+with st.expander(
+    "ℹ️ Volatility Guide"
+):
 
-show_indicator_help(
-    "Volatility",
-    expanded=True,
-)
+    st.markdown(
+        """
+### High Volatility
 
+Advantages:
+- Larger price moves
+- More trading opportunities
 
-show_indicator_help(
-    "ATR"
-)
+Risks:
+- Wider stop-loss
+- Greater drawdown risk
 
+### Low Volatility
 
-show_indicator_help(
-    "Bollinger Bands"
-)
+Can indicate consolidation.
 
+A Bollinger Band squeeze can sometimes
+precede a breakout, but direction requires
+confirmation.
+"""
+    )
 
-# ============================================================
-# NAVIGATION
-# ============================================================
 
 st.divider()
 

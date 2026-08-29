@@ -8,10 +8,6 @@ from components.navigation import (
     show_page_navigation,
 )
 
-from components.indicator_help import (
-    show_indicator_help,
-)
-
 from services.stock_service import (
     analyze_stock,
 )
@@ -22,17 +18,6 @@ from analytics.momentum import (
 )
 
 
-# ============================================================
-# PAGE
-# ============================================================
-
-st.set_page_config(
-    page_title="Momentum Analysis",
-    page_icon="⚡",
-    layout="wide",
-)
-
-
 CURRENT_PAGE = (
     "pages/04_⚡_Momentum.py"
 )
@@ -40,96 +25,47 @@ CURRENT_PAGE = (
 
 page_header(
     "⚡ Momentum Analysis",
-    CURRENT_PAGE,
+    CURRENT_PAGE
 )
 
-
-# ============================================================
-# STOCK
-# ============================================================
 
 stock = get_selected_stock()
 
 
-# ============================================================
-# ANALYSIS
-# ============================================================
-
-try:
-
-    data = analyze_stock(
-        stock
-    )
-
-except Exception as error:
-
-    st.error(
-        f"Unable to analyze {stock}: {error}"
-    )
-
-    st.stop()
-
-
-if data.empty:
-
-    st.error(
-        "No analysis data available."
-    )
-
-    st.stop()
+data = analyze_stock(
+    stock
+)
 
 
 score = momentum_score(
     data
 )
 
-
 status = momentum_status(
     data
 )
 
-
 latest = data.iloc[-1]
 
-
-# ============================================================
-# METRICS
-# ============================================================
 
 c1, c2, c3 = st.columns(3)
 
 
 c1.metric(
     "Momentum Score",
-    score,
-    help=(
-        "Overall momentum score calculated "
-        "by the application's momentum engine."
-    ),
+    score
 )
-
 
 c2.metric(
     "Momentum",
-    status,
-    help=(
-        "Overall momentum status."
-    ),
+    status
 )
-
 
 c3.metric(
     "RSI",
-    f"{latest['RSI']:.2f}",
-    help=(
-        "RSI measures momentum."
-    ),
+    f"{latest['RSI']:.2f}"
 )
 
-
-# ============================================================
-# CHART
-# ============================================================
 
 st.subheader(
     "📈 Momentum Indicators"
@@ -147,34 +83,31 @@ st.line_chart(
 )
 
 
-# ============================================================
-# EDUCATION
-# ============================================================
+with st.expander(
+    "ℹ️ Momentum Trading Guide"
+):
 
-show_indicator_help(
-    "Momentum",
-    expanded=True,
-)
+    st.markdown(
+        """
+### Positive Momentum
 
+Look for:
 
-show_indicator_help(
-    "RSI"
-)
+- RSI above 50
+- MACD above signal
+- Price above EMA 20
+- Increasing volume
 
+### Strong Momentum
 
-show_indicator_help(
-    "MACD"
-)
+A stronger setup occurs when
+multiple indicators confirm each other.
 
+Avoid relying on a single momentum
+indicator.
+"""
+    )
 
-show_indicator_help(
-    "EMA"
-)
-
-
-# ============================================================
-# NAVIGATION
-# ============================================================
 
 st.divider()
 

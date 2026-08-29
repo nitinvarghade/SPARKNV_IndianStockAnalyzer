@@ -1,328 +1,180 @@
-# analytics/candlestick_patterns.py
+import streamlit as st
 
-import pandas as pd
-import numpy as np
+from utils.tooltips import get_pattern_help
 
 
-def detect_candlestick_patterns(data):
+def detect_candlestick_patterns(df):
 
-    df = data.copy()
+    patterns = []
 
-    body = (
-        df["Close"] -
-        df["Open"]
+    if len(df) < 2:
+        return patterns
+
+    current = df.iloc[-1]
+    previous = df.iloc[-2]
+
+    body = abs(
+        current["close"] -
+        current["open"]
     )
 
-    body_abs = body.abs()
-
     candle_range = (
-        df["High"] -
-        df["Low"]
-    ).replace(0, np.nan)
+        current["high"] -
+        current["low"]
+    )
 
     upper_wick = (
-        df["High"] -
-        df[["Open", "Close"]].max(axis=1)
+        current["high"] -
+        max(
+            current["open"],
+            current["close"]
+        )
     )
 
     lower_wick = (
-        df[["Open", "Close"]].min(axis=1) -
-        df["Low"]
+        min(
+            current["open"],
+            current["close"]
+        ) -
+        current["low"]
     )
 
     # --------------------------------------------------------
-    # Doji
+    # DOJI
     # --------------------------------------------------------
 
-    df["Doji"] = (
-        body_abs <= candle_range * 0.10
-    )
+    if candle_range > 0:
+
+        if body <= candle_range * 0.10:
+
+            patterns.append("Doji")
 
     # --------------------------------------------------------
-    # Hammer
+    # HAMMER
     # --------------------------------------------------------
 
-    df["Hammer"] = (
-        (lower_wick >= body_abs * 2) &
-        (upper_wick <= body_abs) &
-        (body_abs > 0)
-    )
+    if (
+        lower_wick >= body * 2
+        and upper_wick <= body
+    ):
+
+        patterns.append("Hammer")
 
     # --------------------------------------------------------
-    # Inverted Hammer
+    # SHOOTING STAR
     # --------------------------------------------------------
 
-    df["Inverted_Hammer"] = (
-        (upper_wick >= body_abs * 2) &
-        (lower_wick <= body_abs) &
-        (body_abs > 0)
-    )
+    if (
+        upper_wick >= body * 2
+        and lower_wick <= body
+    ):
+
+        patterns.append("Shooting Star")
 
     # --------------------------------------------------------
-    # Shooting Star
+    # BULLISH ENGULFING
     # --------------------------------------------------------
 
-    df["Shooting_Star"] = (
-        (upper_wick >= body_abs * 2) &
-        (lower_wick <= body_abs) &
-        (body_abs > 0) &
-        (
-            df["Close"] <
-            df["Open"]
+    if (
+        current["close"] >
+        current["open"]
+
+        and
+
+        previous["close"] <
+        previous["open"]
+
+        and
+
+        current["close"] >=
+        previous["open"]
+
+        and
+
+        current["open"] <=
+        previous["close"]
+    ):
+
+        patterns.append(
+            "Bullish Engulfing"
         )
-    )
 
     # --------------------------------------------------------
-    # Bullish / Bearish
+    # BEARISH ENGULFING
     # --------------------------------------------------------
 
-    previous_open = df["Open"].shift(1)
-    previous_close = df["Close"].shift(1)
+    if (
+        current["close"] <
+        current["open"]
 
-    previous_bearish = (
-        previous_close < previous_open
-    )
+        and
 
-    previous_bullish = (
-        previous_close > previous_open
-    )
+        previous["close"] >
+        previous["open"]
 
-    current_bullish = (
-        df["Close"] > df["Open"]
-    )
+        and
 
-    current_bearish = (
-        df["Close"] < df["Open"]
-    )
+        current["open"] >=
+        previous["close"]
 
-    # --------------------------------------------------------
-    # Bullish Engulfing
-    # --------------------------------------------------------
+        and
 
-    df["Bullish_Engulfing"] = (
-        previous_bearish &
-        current_bullish &
-        (
-            df["Open"] <= previous_close
-        ) &
-        (
-            df["Close"] >= previous_open
+        current["close"] <=
+        previous["open"]
+    ):
+
+        patterns.append(
+            "Bearish Engulfing"
         )
-    )
 
-    # --------------------------------------------------------
-    # Bearish Engulfing
-    # --------------------------------------------------------
+    return patterns
 
-    df["Bearish_Engulfing"] = (
-        previous_bullish &
-        current_bearish &
-        (
-            df["Open"] >= previous_close
-        ) &
-        (
-            df["Close"] <= previous_open
+
+def display_candlestick_patterns(df):
+
+    st.subheader("🕯️ Candlestick Patterns")
+
+    patterns = detect_candlestick_patterns(df)
+
+    if not patterns:
+
+        st.info(
+            "No major candlestick pattern detected "
+            "on the latest candle."
         )
-    )
 
-    # --------------------------------------------------------
-    # Harami
-    # --------------------------------------------------------
+        return
 
-    df["Bullish_Harami"] = (
-        previous_bearish &
-        current_bullish &
-        (
-            df["Open"] > previous_close
-        ) &
-        (
-            df["Close"] < previous_open
+    for pattern in patterns:
+
+        if pattern in [
+            "Bullish Engulfing",
+            "Hammer",
+            "Inverted Hammer",
+        ]:
+
+            icon = "🟢"
+
+        elif pattern in [
+            "Bearish Engulfing",
+            "Shooting Star",
+        ]:
+
+            icon = "🔴"
+
+        else:
+
+            icon = "🟡"
+
+        st.markdown(
+            f"### {icon} {pattern} ⓘ",
+            help=get_pattern_help(pattern)
         )
-    )
 
-    df["Bearish_Harami"] = (
-        previous_bullish &
-        current_bearish &
-        (
-            df["Open"] < previous_close
-        ) &
-        (
-            df["Close"] > previous_open
-        )
-    )
+        with st.expander(
+            f"📖 {pattern} — Details"
+        ):
 
-    # --------------------------------------------------------
-    # Marubozu
-    # --------------------------------------------------------
-
-    df["Bullish_Marubozu"] = (
-        current_bullish &
-        (
-            upper_wick <= candle_range * 0.05
-        ) &
-        (
-            lower_wick <= candle_range * 0.05
-        )
-    )
-
-    df["Bearish_Marubozu"] = (
-        current_bearish &
-        (
-            upper_wick <= candle_range * 0.05
-        ) &
-        (
-            lower_wick <= candle_range * 0.05
-        )
-    )
-
-    # --------------------------------------------------------
-    # Morning / Evening Star
-    # --------------------------------------------------------
-
-    first_open = df["Open"].shift(2)
-
-    first_close = df["Close"].shift(2)
-
-    second_body = (
-        df["Close"].shift(1) -
-        df["Open"].shift(1)
-    ).abs()
-
-    first_body = (
-        first_close -
-        first_open
-    ).abs()
-
-    third_body = body_abs
-
-    df["Morning_Star"] = (
-        (first_close < first_open) &
-        (second_body < first_body * 0.5) &
-        current_bullish &
-        (
-            df["Close"] >
-            (
-                first_open +
-                first_close
-            ) / 2
-        ) &
-        (third_body > 0)
-    )
-
-    df["Evening_Star"] = (
-        (first_close > first_open) &
-        (second_body < first_body * 0.5) &
-        current_bearish &
-        (
-            df["Close"] <
-            (
-                first_open +
-                first_close
-            ) / 2
-        ) &
-        (third_body > 0)
-    )
-
-    # --------------------------------------------------------
-    # Piercing
-    # --------------------------------------------------------
-
-    df["Piercing_Pattern"] = (
-        previous_bearish &
-        current_bullish &
-        (
-            df["Close"] >
-            (
-                previous_open +
-                previous_close
-            ) / 2
-        ) &
-        (
-            df["Close"] < previous_open
-        )
-    )
-
-    # --------------------------------------------------------
-    # Dark Cloud Cover
-    # --------------------------------------------------------
-
-    df["Dark_Cloud_Cover"] = (
-        previous_bullish &
-        current_bearish &
-        (
-            df["Close"] <
-            (
-                previous_open +
-                previous_close
-            ) / 2
-        ) &
-        (
-            df["Close"] > previous_open
-        )
-    )
-
-    # --------------------------------------------------------
-    # Three White Soldiers
-    # --------------------------------------------------------
-
-    b1 = df["Close"] > df["Open"]
-    b2 = b1.shift(1)
-    b3 = b1.shift(2)
-
-    df["Three_White_Soldiers"] = (
-        b1 &
-        b2 &
-        b3 &
-        (
-            df["Close"] >
-            df["Close"].shift(1)
-        ) &
-        (
-            df["Close"].shift(1) >
-            df["Close"].shift(2)
-        )
-    )
-
-    # --------------------------------------------------------
-    # Three Black Crows
-    # --------------------------------------------------------
-
-    s1 = df["Close"] < df["Open"]
-    s2 = s1.shift(1)
-    s3 = s1.shift(2)
-
-    df["Three_Black_Crows"] = (
-        s1 &
-        s2 &
-        s3 &
-        (
-            df["Close"] <
-            df["Close"].shift(1)
-        ) &
-        (
-            df["Close"].shift(1) <
-            df["Close"].shift(2)
-        )
-    )
-
-    return df
-
-
-PATTERN_COLUMNS = [
-    "Doji",
-    "Hammer",
-    "Inverted_Hammer",
-    "Shooting_Star",
-    "Bullish_Engulfing",
-    "Bearish_Engulfing",
-    "Bullish_Harami",
-    "Bearish_Harami",
-    "Bullish_Marubozu",
-    "Bearish_Marubozu",
-    "Morning_Star",
-    "Evening_Star",
-    "Piercing_Pattern",
-    "Dark_Cloud_Cover",
-    "Three_White_Soldiers",
-    "Three_Black_Crows",
-]
+            st.markdown(
+                get_pattern_help(pattern)
+            )

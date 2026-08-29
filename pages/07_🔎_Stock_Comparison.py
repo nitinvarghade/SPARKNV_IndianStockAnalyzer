@@ -9,23 +9,8 @@ from components.navigation import (
     show_page_navigation,
 )
 
-from components.indicator_help import (
-    show_indicator_help,
-)
-
 from services.stock_service import (
     get_stock_summary,
-)
-
-
-# ============================================================
-# PAGE
-# ============================================================
-
-st.set_page_config(
-    page_title="Stock Comparison",
-    page_icon="🔎",
-    layout="wide",
 )
 
 
@@ -36,13 +21,9 @@ CURRENT_PAGE = (
 
 page_header(
     "🔎 Stock Comparison",
-    CURRENT_PAGE,
+    CURRENT_PAGE
 )
 
-
-# ============================================================
-# STOCKS
-# ============================================================
 
 selected_stock = get_selected_stock()
 
@@ -79,10 +60,6 @@ if not stocks:
     st.stop()
 
 
-# ============================================================
-# ANALYSIS
-# ============================================================
-
 results = []
 
 
@@ -114,10 +91,6 @@ if not results:
     st.stop()
 
 
-# ============================================================
-# DATAFRAME
-# ============================================================
-
 df = pd.DataFrame(
     results
 )
@@ -145,69 +118,10 @@ display_columns = [
 
 
 st.dataframe(
-    df[
-        display_columns
-    ],
+    df[display_columns],
     use_container_width=True,
-    hide_index=True,
 )
 
-
-# ============================================================
-# EDUCATION
-# ============================================================
-
-st.divider()
-
-st.subheader(
-    "ℹ️ How to Compare These Indicators"
-)
-
-
-c1, c2, c3 = st.columns(3)
-
-
-with c1:
-
-    show_indicator_help(
-        "RSI"
-    )
-
-
-with c2:
-
-    show_indicator_help(
-        "Momentum"
-    )
-
-
-with c3:
-
-    show_indicator_help(
-        "Volume Ratio"
-    )
-
-
-c1, c2 = st.columns(2)
-
-
-with c1:
-
-    show_indicator_help(
-        "Volatility"
-    )
-
-
-with c2:
-
-    show_indicator_help(
-        "Candlestick"
-    )
-
-
-# ============================================================
-# NAVIGATION
-# ============================================================
 
 st.divider()
 

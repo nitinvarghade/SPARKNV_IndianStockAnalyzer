@@ -8,27 +8,12 @@ from components.navigation import (
     show_page_navigation,
 )
 
-from components.indicator_help import (
-    show_indicator_help,
-)
-
 from services.stock_service import (
     analyze_stock,
 )
 
 from analytics.trend_analysis import (
     calculate_daily_trend,
-)
-
-
-# ============================================================
-# PAGE
-# ============================================================
-
-st.set_page_config(
-    page_title="Trend Analysis",
-    page_icon="📈",
-    layout="wide",
 )
 
 
@@ -39,43 +24,16 @@ CURRENT_PAGE = (
 
 page_header(
     "📈 Trend Analysis",
-    CURRENT_PAGE,
+    CURRENT_PAGE
 )
 
-
-# ============================================================
-# STOCK
-# ============================================================
 
 stock = get_selected_stock()
 
 
-# ============================================================
-# ANALYSIS
-# ============================================================
-
-try:
-
-    data = analyze_stock(
-        stock
-    )
-
-except Exception as error:
-
-    st.error(
-        f"Unable to analyze {stock}: {error}"
-    )
-
-    st.stop()
-
-
-if data.empty:
-
-    st.error(
-        "No analysis data available."
-    )
-
-    st.stop()
+data = analyze_stock(
+    stock
+)
 
 
 trend = calculate_daily_trend(
@@ -86,55 +44,27 @@ trend = calculate_daily_trend(
 latest = data.iloc[-1]
 
 
-# ============================================================
-# TREND
-# ============================================================
-
 st.subheader(
     f"Trend: {trend}"
 )
 
-
-# ============================================================
-# METRICS
-# ============================================================
 
 c1, c2, c3 = st.columns(3)
 
 
 c1.metric(
     "Price",
-    f"₹{latest['Close']:,.2f}",
-    help=(
-        "Current closing price."
-    ),
+    f"₹{latest['Close']:,.2f}"
 )
-
 
 c2.metric(
     "SMA 20",
-    f"₹{latest['SMA_20']:,.2f}",
-    help=(
-        "20-period Simple Moving Average."
-    ),
+    f"₹{latest['SMA_20']:,.2f}"
 )
-
 
 c3.metric(
     "SMA 50",
-    f"₹{latest['SMA_50']:,.2f}",
-    help=(
-        "50-period Simple Moving Average."
-    ),
-)
-
-
-# ============================================================
-# CHART
-# ============================================================
-
-st.subheader(
-    "📈 Price vs Moving Averages"
+    f"₹{latest['SMA_50']:,.2f}"
 )
 
 
@@ -149,29 +79,34 @@ st.line_chart(
 )
 
 
-# ============================================================
-# EDUCATION
-# ============================================================
+with st.expander(
+    "ℹ️ How to use Trend Analysis"
+):
 
-show_indicator_help(
-    "Trend",
-    expanded=True,
-)
+    st.markdown(
+        """
+### Trend Analysis
 
+**Bullish**
+- Price above SMA 20
+- SMA 20 above SMA 50
+- Higher highs / higher lows
 
-show_indicator_help(
-    "SMA"
-)
+**Potential Buy**
+- Price above major moving averages
+- SMA 20 crossing above SMA 50
+- Momentum confirmation
 
+**Potential Sell**
+- Price below SMA 20 and SMA 50
+- SMA 20 crossing below SMA 50
 
-show_indicator_help(
-    "EMA"
-)
+A trend indicator should generally be
+combined with volume and momentum rather
+than used alone.
+"""
+    )
 
-
-# ============================================================
-# NAVIGATION
-# ============================================================
 
 st.divider()
 

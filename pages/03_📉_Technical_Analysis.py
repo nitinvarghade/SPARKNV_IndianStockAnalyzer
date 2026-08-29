@@ -8,23 +8,8 @@ from components.navigation import (
     show_page_navigation,
 )
 
-from components.indicator_help import (
-    show_indicator_help,
-)
-
 from services.stock_service import (
     analyze_stock,
-)
-
-
-# ============================================================
-# PAGE
-# ============================================================
-
-st.set_page_config(
-    page_title="Technical Analysis",
-    page_icon="📉",
-    layout="wide",
 )
 
 
@@ -35,43 +20,16 @@ CURRENT_PAGE = (
 
 page_header(
     "📉 Technical Analysis",
-    CURRENT_PAGE,
+    CURRENT_PAGE
 )
 
-
-# ============================================================
-# STOCK
-# ============================================================
 
 stock = get_selected_stock()
 
 
-# ============================================================
-# ANALYSIS
-# ============================================================
-
-try:
-
-    data = analyze_stock(
-        stock
-    )
-
-except Exception as error:
-
-    st.error(
-        f"Unable to analyze {stock}: {error}"
-    )
-
-    st.stop()
-
-
-if data.empty:
-
-    st.error(
-        "No analysis data available."
-    )
-
-    st.stop()
+data = analyze_stock(
+    stock
+)
 
 
 latest = data.iloc[-1]
@@ -86,7 +44,6 @@ indicator = st.selectbox(
     [
         "RSI",
         "MACD",
-        "MACD Histogram",
         "Bollinger Bands",
         "Moving Averages",
         "VWAP",
@@ -104,21 +61,55 @@ if indicator == "RSI":
 
     st.metric(
         "RSI",
-        f"{latest['RSI']:.2f}",
-        help=(
-            "RSI measures momentum on a "
-            "0–100 scale."
-        ),
+        f"{latest['RSI']:.2f}"
     )
 
     st.line_chart(
         data["RSI"]
     )
 
-    show_indicator_help(
-        "RSI",
-        expanded=True,
-    )
+    with st.expander(
+        "ℹ️ RSI — Usage & Buy/Sell Guide"
+    ):
+
+        st.markdown(
+            """
+### RSI
+
+RSI measures momentum.
+
+**Below 30**
+- Potentially oversold
+- Possible reversal area
+- Do not buy automatically
+
+**30–50**
+- Weak momentum
+
+**50–70**
+- Positive momentum
+
+**Above 70**
+- Potentially overbought
+- Avoid chasing extended moves
+
+### Potential Buy Confirmation
+
+Consider RSI together with:
+- Price above VWAP
+- Bullish trend
+- Positive MACD
+- Volume confirmation
+
+### Potential Sell Confirmation
+
+Consider:
+- RSI falling below 50
+- MACD bearish crossover
+- Price below VWAP
+- Weak volume
+"""
+        )
 
 
 # ============================================================
@@ -136,47 +127,29 @@ elif indicator == "MACD":
         ]
     )
 
-    show_indicator_help(
-        "MACD",
-        expanded=True,
-    )
+    with st.expander(
+        "ℹ️ MACD — Usage"
+    ):
 
-    if "MACD_Histogram" in data.columns:
+        st.markdown(
+            """
+### MACD
 
-        show_indicator_help(
-            "MACD Histogram"
+MACD measures momentum and trend.
+
+**Bullish**
+- MACD above Signal
+- Histogram positive
+- Price confirming the move
+
+**Bearish**
+- MACD below Signal
+- Histogram negative
+
+A MACD signal becomes stronger when
+confirmed by trend and volume.
+"""
         )
-
-
-# ============================================================
-# MACD HISTOGRAM
-# ============================================================
-
-elif indicator == "MACD Histogram":
-
-    if "MACD_Histogram" in data.columns:
-
-        st.line_chart(
-            data[
-                "MACD_Histogram"
-            ]
-        )
-
-    else:
-
-        histogram = (
-            data["MACD"]
-            - data["MACD_Signal"]
-        )
-
-        st.line_chart(
-            histogram
-        )
-
-    show_indicator_help(
-        "MACD Histogram",
-        expanded=True,
-    )
 
 
 # ============================================================
@@ -196,43 +169,70 @@ elif indicator == "Bollinger Bands":
         ]
     )
 
-    show_indicator_help(
-        "Bollinger Bands",
-        expanded=True,
-    )
+    with st.expander(
+        "ℹ️ Bollinger Bands — Usage"
+    ):
+
+        st.markdown(
+            """
+### Bollinger Bands
+
+Bollinger Bands measure price volatility.
+
+**Price near lower band**
+- Possible oversold condition
+
+**Price near upper band**
+- Possible overbought condition
+
+**Band squeeze**
+- Low volatility
+- May precede a large move
+
+Do not treat touching a band alone
+as a Buy/Sell signal.
+"""
+        )
 
 
 # ============================================================
-# MOVING AVERAGES
+# MOVING AVERAGE
 # ============================================================
 
 elif indicator == "Moving Averages":
 
-    columns = [
-        "Close",
-        "SMA_20",
-        "SMA_50",
-        "EMA_20",
-    ]
-
-    if "SMA_200" in data.columns:
-
-        columns.append(
-            "SMA_200"
-        )
-
     st.line_chart(
-        data[columns]
+        data[
+            [
+                "Close",
+                "SMA_20",
+                "SMA_50",
+                "SMA_200",
+                "EMA_20",
+            ]
+        ]
     )
 
-    show_indicator_help(
-        "SMA",
-        expanded=True,
-    )
+    with st.expander(
+        "ℹ️ Moving Average — Usage"
+    ):
 
-    show_indicator_help(
-        "EMA"
-    )
+        st.markdown(
+            """
+### Moving Averages
+
+Common interpretation:
+
+**Price > SMA 20 > SMA 50**
+→ bullish structure
+
+**Price < SMA 20 < SMA 50**
+→ bearish structure
+
+SMA 200 is commonly used for
+longer-term trend analysis.
+"""
+        )
 
 
 # ============================================================
@@ -250,10 +250,35 @@ elif indicator == "VWAP":
         ]
     )
 
-    show_indicator_help(
-        "VWAP",
-        expanded=True,
-    )
+    with st.expander(
+        "ℹ️ VWAP — Intraday Usage"
+    ):
+
+        st.markdown(
+            """
+### VWAP
+
+VWAP = Volume Weighted Average Price.
+
+For intraday trading:
+
+**Price above VWAP**
+→ bullish bias
+
+**Price below VWAP**
+→ bearish bias
+
+Potential long setup:
+- Price above VWAP
+- Positive momentum
+- Volume confirmation
+
+Potential short setup:
+- Price below VWAP
+- Negative momentum
+- Volume confirmation
+"""
+        )
 
 
 # ============================================================
@@ -271,10 +296,32 @@ elif indicator == "Supertrend":
         ]
     )
 
-    show_indicator_help(
-        "Supertrend",
-        expanded=True,
-    )
+    with st.expander(
+        "ℹ️ Supertrend — Usage"
+    ):
+
+        st.markdown(
+            """
+### Supertrend
+
+Supertrend follows the direction of price.
+
+**Bullish**
+- Supertrend below price
+
+**Bearish**
+- Supertrend above price
+
+Potential Buy:
+- Supertrend turns bullish
+- Price above VWAP/SMA
+- Momentum confirms
+
+Potential Sell:
+- Supertrend turns bearish
+- Price below major averages
+"""
+        )
 
 
 # ============================================================
@@ -287,15 +334,28 @@ elif indicator == "ATR":
         data["ATR"]
     )
 
-    show_indicator_help(
-        "ATR",
-        expanded=True,
-    )
+    with st.expander(
+        "ℹ️ ATR — Usage"
+    ):
 
+        st.markdown(
+            """
+### ATR
 
-# ============================================================
-# NAVIGATION
-# ============================================================
+ATR measures volatility, not direction.
+
+Higher ATR:
+- Larger price movement
+- Wider stop-loss may be required
+
+Lower ATR:
+- Smaller price movement
+
+ATR can be useful for determining
+position size and stop-loss distance.
+"""
+        )
+
 
 st.divider()
 
