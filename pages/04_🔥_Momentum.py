@@ -17,11 +17,21 @@ from analytics.momentum import (
     momentum_status,
 )
 
+from utils.indicator_guide import (
+    get_indicator_tooltip,
+    show_indicator_guide,
+    get_trading_guide,
+)
+
 
 CURRENT_PAGE = (
     "pages/04_⚡_Momentum.py"
 )
 
+
+# ============================================================
+# HEADER
+# ============================================================
 
 page_header(
     "⚡ Momentum Analysis",
@@ -29,13 +39,15 @@ page_header(
 )
 
 
-stock = get_selected_stock()
+# ============================================================
+# DATA
+# ============================================================
 
+stock = get_selected_stock()
 
 data = analyze_stock(
     stock
 )
-
 
 score = momentum_score(
     data
@@ -48,29 +60,47 @@ status = momentum_status(
 latest = data.iloc[-1]
 
 
+# ============================================================
+# METRICS
+# ============================================================
+
 c1, c2, c3 = st.columns(3)
 
 
 c1.metric(
     "Momentum Score",
-    score
+    score,
+    help=(
+        "Overall momentum score calculated "
+        "by the application."
+    )
 )
+
 
 c2.metric(
     "Momentum",
-    status
+    status,
+    help=(
+        "Current momentum classification "
+        "calculated by the application."
+    )
 )
+
 
 c3.metric(
     "RSI",
-    f"{latest['RSI']:.2f}"
+    f"{latest['RSI']:.2f}",
+    help=get_indicator_tooltip("RSI")
 )
 
+
+# ============================================================
+# MOMENTUM CHART
+# ============================================================
 
 st.subheader(
     "📈 Momentum Indicators"
 )
-
 
 st.line_chart(
     data[
@@ -83,31 +113,94 @@ st.line_chart(
 )
 
 
+# ============================================================
+# INDICATOR GUIDES
+# ============================================================
+
 with st.expander(
-    "ℹ️ Momentum Trading Guide"
+    "📚 Momentum Indicator Study Guide"
+):
+
+    show_indicator_guide(
+        st,
+        "RSI"
+    )
+
+    st.markdown(
+        "---"
+    )
+
+    show_indicator_guide(
+        st,
+        "MACD"
+    )
+
+    st.markdown(
+        "---"
+    )
+
+    show_indicator_guide(
+        st,
+        "EMA"
+    )
+
+    st.markdown(
+        "---"
+    )
+
+    show_indicator_guide(
+        st,
+        "Volume"
+    )
+
+    st.markdown(
+        "---"
+    )
+
+    show_indicator_guide(
+        st,
+        "Momentum"
+    )
+
+
+# ============================================================
+# TRADING STUDY GUIDE
+# ============================================================
+
+with st.expander(
+    "🎯 How to Study Momentum Signals"
 ):
 
     st.markdown(
-        """
-### Positive Momentum
-
-Look for:
-
-- RSI above 50
-- MACD above signal
-- Price above EMA 20
-- Increasing volume
-
-### Strong Momentum
-
-A stronger setup occurs when
-multiple indicators confirm each other.
-
-Avoid relying on a single momentum
-indicator.
-"""
+        get_trading_guide(
+            "BUY"
+        )
     )
 
+    st.markdown(
+        "---"
+    )
+
+    st.markdown(
+        get_trading_guide(
+            "SELL"
+        )
+    )
+
+    st.markdown(
+        "---"
+    )
+
+    st.markdown(
+        get_trading_guide(
+            "HOLD"
+        )
+    )
+
+
+# ============================================================
+# NAVIGATION
+# ============================================================
 
 st.divider()
 

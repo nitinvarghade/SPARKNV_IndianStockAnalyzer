@@ -3,45 +3,73 @@
 import streamlit as st
 import pandas as pd
 
-from services.investment_screener import (
-    run_investment_screener,
+from components.navigation import (
+    page_header,
+    show_page_navigation,
+)
+
+from services.stock_service import (
+    analyze_stock,
+)
+
+from utils.indicator_guide import (
+    get_indicator_tooltip,
+    show_indicator_guide,
+    get_trading_guide,
+)
+
+
+CURRENT_PAGE = (
+    "pages/08_💰_Investment_Screener.py"
 )
 
 
 # ============================================================
-# PAGE
+# HEADER
 # ============================================================
 
-st.set_page_config(
-    page_title="Investment Screener",
-    page_icon="💰",
-    layout="wide",
+page_header(
+    "💰 Investment Screener",
+    CURRENT_PAGE
 )
 
-
-st.title(
-    "💰 Indian Stock Investment Screener"
-)
 
 st.caption(
-    "NIFTY 500 → Technical + Momentum + Growth + Quality + Risk"
-)
-
-st.warning(
-    """
-    ⚠️ This is a quantitative screening system, not a guarantee
-    of profit. The confidence score represents model strength,
-    NOT the probability that a trade will be profitable.
-    """
+    "Educational stock screening using technical indicators."
 )
 
 
 # ============================================================
-# STRATEGY
+# STOCK LIST
 # ============================================================
 
-strategy = st.radio(
-    "Select Investment Type",
+DEFAULT_STOCKS = [
+    "RELIANCE.NS",
+    "TCS.NS",
+    "INFY.NS",
+    "HDFCBANK.NS",
+    "ICICIBANK.NS",
+    "SBIN.NS",
+    "LT.NS",
+    "ITC.NS",
+    "BHARTIARTL.NS",
+    "AXISBANK.NS",
+]
+
+
+stocks = st.multiselect(
+    "Select stocks to screen",
+    DEFAULT_STOCKS,
+    default=DEFAULT_STOCKS[:5],
+)
+
+
+# ============================================================
+# INVESTMENT TYPE
+# ============================================================
+
+investment_type = st.radio(
+    "Investment Type",
     [
         "Intraday",
         "Swing",
@@ -52,417 +80,406 @@ strategy = st.radio(
 
 
 # ============================================================
-# DESCRIPTION
+# SCREEN
 # ============================================================
 
-if strategy == "Intraday":
-
-    st.info(
-        """
-        **Intraday strategy**
-
-        Highest weight:
-        Momentum + Trend + Risk + Volume
-
-        Holding period: Same trading day.
-        """
-    )
-
-elif strategy == "Swing":
-
-    st.info(
-        """
-        **Swing strategy**
-
-        Highest weight:
-        Trend + Momentum + Growth + Quality
-
-        Holding period: Several days/weeks.
-        """
-    )
-
-else:
-
-    st.info(
-        """
-        **Long-term strategy**
-
-        Highest weight:
-        Growth + Quality + Valuation + Trend
-
-        Holding period: Months/years.
-        """
-    )
-
-
-# ============================================================
-# SCAN
-# ============================================================
-
-scan = st.button(
-    "🔍 Scan NIFTY 500",
-    type="primary",
+if st.button(
+    "🔍 Run Investment Screener",
     use_container_width=True,
-)
+):
 
+    if not stocks:
 
-# ============================================================
-# CACHE
-# ============================================================
-
-@st.cache_data(
-    ttl=1800,
-    show_spinner=False,
-)
-def get_results(strategy):
-
-    return run_investment_screener(
-        strategy=strategy,
-        top_n=50,
-    )
-
-
-# ============================================================
-# RUN
-# ============================================================
-
-if scan:
-
-    with st.spinner(
-        "Scanning stocks... Please wait."
-    ):
-
-        results = get_results(
-            strategy
-        )
-
-    if results.empty:
-
-        st.error(
-            """
-            No stocks were successfully analyzed.
-
-            Check your internet connection and
-            services/market_data.py.
-            """
+        st.warning(
+            "Please select at least one stock."
         )
 
         st.stop()
 
+
+    results = []
+
+
+    progress = st.progress(0)
+
+
+    for index, stock in enumerate(stocks):
+
+        try:
+
+            data = analyze_stock(stock)
+
+            if data is None or data.empty:
+                continue
+
+
+            latest = data.iloc[-1]
+
+
+            def value(
+                column,
+                default=None
+            ):
+
+                if column not in data.columns:
+                    return default
+
+                result = latest[column]
+
+                if pd.isna(result):
+                    return default
+
+                return result
+
+
+            close = value(
+                "Close",
+                0
+            )
+
+            rsi = value(
+                "RSI"
+            )
+
+            macd = value(
+                "MACD"
+            )
+
+            macd_signal = value(
+                "MACD_Signal"
+            )
+
+            sma20 = value(
+                "SMA_20"
+            )
+
+            sma50 = value(
+                "SMA_50"
+            )
+
+            sma200 = value(
+                "SMA_200"
+            )
+
+            ema20 = value(
+                "EMA_20"
+            )
+
+            supertrend = value(
+                "Supertrend"
+            )
+
+            volume = value(
+                "Volume",
+                0
+            )
+
+            volume_ratio = value(
+                "Volume_Ratio"
+            )
+
+            atr = value(
+                "ATR"
+            )
+
+            vwap = value(
+                "VWAP"
+            )
+
+
+            # =================================================
+            # SCORING
+            # =================================================
+
+            score = 0
+
+
+            # RSI
+            if rsi is not None:
+
+                if 50 <= rsi <= 70:
+                    score += 1
+
+                elif rsi > 70:
+                    score += 0
+
+                elif rsi < 30:
+                    score -= 1
+
+
+            # MACD
+            if (
+                macd is not None
+                and macd_signal is not None
+            ):
+
+                if macd > macd_signal:
+                    score += 1
+                else:
+                    score -= 1
+
+
+            # SMA trend
+            if (
+                close
+                and sma20 is not None
+                and sma50 is not None
+            ):
+
+                if (
+                    close > sma20
+                    and sma20 > sma50
+                ):
+                    score += 1
+
+                elif (
+                    close < sma20
+                    and sma20 < sma50
+                ):
+                    score -= 1
+
+
+            # SMA 200
+            if (
+                close
+                and sma200 is not None
+            ):
+
+                if close > sma200:
+                    score += 1
+
+                else:
+                    score -= 1
+
+
+            # EMA
+            if (
+                close
+                and ema20 is not None
+            ):
+
+                if close > ema20:
+                    score += 1
+
+                else:
+                    score -= 1
+
+
+            # Supertrend
+            if (
+                close
+                and supertrend is not None
+            ):
+
+                if close > supertrend:
+                    score += 1
+
+                else:
+                    score -= 1
+
+
+            # Volume
+            if (
+                volume_ratio is not None
+                and volume_ratio >= 1.5
+            ):
+
+                score += 1
+
+
+            # =================================================
+            # CLASSIFICATION
+            # =================================================
+
+            if score >= 4:
+
+                recommendation = "🟢 Bullish"
+
+            elif score <= -3:
+
+                recommendation = "🔴 Bearish"
+
+            else:
+
+                recommendation = "🟡 Neutral"
+
+
+            results.append(
+                {
+                    "Stock": stock,
+                    "Price": close,
+                    "RSI": rsi,
+                    "MACD": macd,
+                    "MACD Signal": macd_signal,
+                    "SMA 20": sma20,
+                    "SMA 50": sma50,
+                    "SMA 200": sma200,
+                    "EMA 20": ema20,
+                    "Supertrend": supertrend,
+                    "Volume": volume,
+                    "Volume Ratio": volume_ratio,
+                    "ATR": atr,
+                    "VWAP": vwap,
+                    "Score": score,
+                    "Recommendation": recommendation,
+                }
+            )
+
+
+        except Exception as e:
+
+            st.warning(
+                f"{stock}: {e}"
+            )
+
+
+        progress.progress(
+            (index + 1) / len(stocks)
+        )
+
+
+    progress.empty()
+
+
+    # =========================================================
+    # RESULTS
+    # =========================================================
+
+    if not results:
+
+        st.warning(
+            "No stock analysis results available."
+        )
+
+        st.stop()
+
+
+    result_df = pd.DataFrame(
+        results
+    )
+
+
+    result_df = result_df.sort_values(
+        "Score",
+        ascending=False
+    )
+
+
     st.session_state[
-        "investment_results"
-    ] = results
+        "investment_screener_results"
+    ] = result_df
 
 
 # ============================================================
-# RESULTS
+# DISPLAY SAVED RESULTS
 # ============================================================
 
 if (
-    "investment_results"
-    not in st.session_state
+    "investment_screener_results"
+    in st.session_state
 ):
 
-    st.info(
-        "Select a strategy and click "
-        "**Scan NIFTY 500**."
-    )
-
-    st.stop()
+    result_df = st.session_state[
+        "investment_screener_results"
+    ]
 
 
-df = st.session_state[
-    "investment_results"
-]
+    # ========================================================
+    # SUMMARY
+    # ========================================================
 
-
-# ============================================================
-# TOP STOCK
-# ============================================================
-
-st.divider()
-
-st.subheader(
-    "🏆 Strongest Recommendation"
-)
-
-top = df.iloc[0]
-
-c1, c2, c3, c4, c5 = st.columns(5)
-
-c1.metric(
-    "Rank",
-    f"#{int(top['Rank'])}"
-)
-
-c2.metric(
-    "Stock",
-    top["Symbol"]
-)
-
-c3.metric(
-    "Score",
-    f"{top['OverallScore']:.1f}/100"
-)
-
-c4.metric(
-    "Recommendation",
-    top["Recommendation"]
-)
-
-c5.metric(
-    "Confidence",
-    f"{top['Confidence']:.0f}%"
-)
-
-
-# ============================================================
-# LEVELS
-# ============================================================
-
-st.subheader(
-    "🎯 Suggested Levels"
-)
-
-c1, c2, c3, c4, c5 = st.columns(5)
-
-c1.metric(
-    "Current",
-    f"₹{top['CurrentPrice']:.2f}"
-)
-
-c2.metric(
-    "Entry",
-    f"₹{top['EntryLow']:.2f} - "
-    f"₹{top['EntryHigh']:.2f}"
-)
-
-c3.metric(
-    "Stop Loss",
-    f"₹{top['StopLoss']:.2f}"
-)
-
-c4.metric(
-    "Target 1",
-    f"₹{top['Target1']:.2f}"
-)
-
-c5.metric(
-    "Target 2",
-    f"₹{top['Target2']:.2f}"
-)
-
-
-if pd.notna(
-    top["RiskReward"]
-):
-
-    st.write(
-        f"**Risk/Reward:** "
-        f"1 : {top['RiskReward']:.2f}"
+    st.subheader(
+        f"📊 {investment_type} Screening Results"
     )
 
 
-# ============================================================
-# EXPLANATION
-# ============================================================
-
-c1, c2 = st.columns(2)
-
-with c1:
-
-    st.success(
-        f"""
-        ### ✅ Positive Signals
-
-        {top['WhyBuy']}
-        """
-    )
-
-with c2:
-
-    st.warning(
-        f"""
-        ### ⚠️ Risk / Negative Signals
-
-        {top['WhyAvoid']}
-        """
+    bullish_count = len(
+        result_df[
+            result_df["Score"] >= 4
+        ]
     )
 
 
-# ============================================================
-# TOP 50
-# ============================================================
+    bearish_count = len(
+        result_df[
+            result_df["Score"] <= -3
+        ]
+    )
 
-st.divider()
 
-st.subheader(
-    f"📊 Top 50 — {strategy}"
-)
+    neutral_count = (
+        len(result_df)
+        - bullish_count
+        - bearish_count
+    )
 
-display_columns = [
-    "Rank",
-    "Symbol",
-    "OverallScore",
-    "Recommendation",
-    "Confidence",
-    "CurrentPrice",
-    "EntryLow",
-    "EntryHigh",
-    "StopLoss",
-    "Target1",
-    "Target2",
-    "RiskReward",
-    "GrowthScore",
-    "QualityScore",
-    "TrendScore",
-    "MomentumScore",
-    "ValuationScore",
-    "RiskScore",
-    "RSI",
-    "Return_1Y",
-]
 
-display_columns = [
-    c
-    for c in display_columns
-    if c in df.columns
-]
+    c1, c2, c3 = st.columns(3)
 
-display_df = df[
-    display_columns
-].copy()
 
-for col in display_df.columns:
-
-    if pd.api.types.is_numeric_dtype(
-        display_df[col]
-    ):
-
-        display_df[col] = (
-            display_df[col]
-            .round(2)
+    c1.metric(
+        "🟢 Bullish",
+        bullish_count,
+        help=(
+            "Stocks whose combined technical score "
+            "meets the bullish threshold."
         )
-
-st.dataframe(
-    display_df,
-    use_container_width=True,
-    hide_index=True,
-)
+    )
 
 
-# ============================================================
-# DOWNLOAD
-# ============================================================
-
-st.divider()
-
-st.subheader(
-    "⬇️ Download"
-)
-
-csv = df.to_csv(
-    index=False
-).encode(
-    "utf-8"
-)
-
-st.download_button(
-    "⬇️ Download Top 50 CSV",
-    data=csv,
-    file_name=(
-        "top_50_"
-        + strategy.lower().replace(
-            " ",
-            "_"
+    c2.metric(
+        "🟡 Neutral",
+        neutral_count,
+        help=(
+            "Stocks where the technical indicators "
+            "do not provide a strong directional agreement."
         )
-        + ".csv"
-    ),
-    mime="text/csv",
-)
-
-
-# ============================================================
-# TOP 5
-# ============================================================
-
-st.divider()
-
-st.subheader(
-    "🥇 Top 5 Strong Recommendations"
-)
-
-for _, row in df.head(5).iterrows():
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-
-    c1.write(
-        f"**#{int(row['Rank'])} "
-        f"{row['Symbol']}**"
     )
 
-    c2.write(
-        f"Score: **{row['OverallScore']:.1f}**"
-    )
 
-    c3.write(
-        f"**{row['Recommendation']}**"
-    )
-
-    c4.write(
-        f"Confidence: "
-        f"**{row['Confidence']:.0f}%**"
-    )
-
-    if pd.notna(
-        row["RiskReward"]
-    ):
-
-        c5.write(
-            f"R:R **1:{row['RiskReward']:.2f}**"
+    c3.metric(
+        "🔴 Bearish",
+        bearish_count,
+        help=(
+            "Stocks whose combined technical score "
+            "meets the bearish threshold."
         )
-
-
-# ============================================================
-# FILTER
-# ============================================================
-
-st.divider()
-
-st.subheader(
-    "🎯 Recommendation Filter"
-)
-
-selected = st.multiselect(
-    "Show",
-    [
-        "STRONG BUY",
-        "BUY",
-        "ACCUMULATE",
-        "HOLD",
-        "WEAK",
-        "AVOID",
-    ],
-    default=[
-        "STRONG BUY",
-        "BUY",
-    ],
-)
-
-filtered = df[
-    df["Recommendation"].isin(
-        selected
     )
-]
 
-st.write(
-    f"**{len(filtered)} stocks found**"
-)
 
-if not filtered.empty:
+    # ========================================================
+    # TABLE
+    # ========================================================
+
+    st.subheader(
+        "📋 Ranked Stocks"
+    )
+
+
+    display_columns = [
+        "Stock",
+        "Price",
+        "RSI",
+        "MACD",
+        "SMA 20",
+        "SMA 50",
+        "EMA 20",
+        "Supertrend",
+        "Volume Ratio",
+        "Score",
+        "Recommendation",
+    ]
+
+
+    display_columns = [
+        column
+        for column in display_columns
+        if column in result_df.columns
+    ]
+
 
     st.dataframe(
-        filtered[
+        result_df[
             display_columns
         ],
         use_container_width=True,
@@ -470,232 +487,275 @@ if not filtered.empty:
     )
 
 
-# ============================================================
-# STOCK DETAILS
-# ============================================================
+    # ========================================================
+    # SELECT STOCK
+    # ========================================================
 
-st.divider()
-
-st.subheader(
-    "🔎 Stock Details"
-)
-
-symbol = st.selectbox(
-    "Select stock",
-    df["Symbol"].tolist(),
-)
-
-row = df[
-    df["Symbol"] == symbol
-].iloc[0]
-
-
-c1, c2, c3, c4 = st.columns(4)
-
-c1.metric(
-    "Score",
-    f"{row['OverallScore']:.1f}"
-)
-
-c2.metric(
-    "Recommendation",
-    row["Recommendation"]
-)
-
-c3.metric(
-    "Confidence",
-    f"{row['Confidence']:.0f}%"
-)
-
-c4.metric(
-    "RSI",
-    f"{row['RSI']:.1f}"
-    if pd.notna(row["RSI"])
-    else "N/A"
-)
-
-
-# ============================================================
-# SCORE BREAKDOWN
-# ============================================================
-
-st.markdown(
-    "### 📊 Score Breakdown"
-)
-
-score_df = pd.DataFrame(
-    {
-        "Factor": [
-            "Growth",
-            "Quality",
-            "Trend",
-            "Momentum",
-            "Valuation",
-            "Risk",
-        ],
-        "Score": [
-            row["GrowthScore"],
-            row["QualityScore"],
-            row["TrendScore"],
-            row["MomentumScore"],
-            row["ValuationScore"],
-            row["RiskScore"],
-        ],
-    }
-)
-
-st.bar_chart(
-    score_df.set_index(
-        "Factor"
+    st.subheader(
+        "🔎 Study Selected Stock"
     )
-)
 
 
-# ============================================================
-# FUNDAMENTALS
-# ============================================================
-
-st.markdown(
-    "### 🏢 Fundamental Snapshot"
-)
-
-c1, c2, c3, c4 = st.columns(4)
-
-c1.metric(
-    "P/E",
-    (
-        f"{row['PE']:.2f}"
-        if pd.notna(row["PE"])
-        else "N/A"
+    selected_stock = st.selectbox(
+        "Select stock",
+        result_df["Stock"].tolist(),
     )
-)
-
-c2.metric(
-    "ROE",
-    (
-        f"{row['ROE'] * 100:.1f}%"
-        if pd.notna(row["ROE"])
-        else "N/A"
-    )
-)
-
-c3.metric(
-    "Revenue Growth",
-    (
-        f"{row['RevenueGrowth'] * 100:.1f}%"
-        if pd.notna(
-            row["RevenueGrowth"]
-        )
-        else "N/A"
-    )
-)
-
-c4.metric(
-    "Debt/Equity",
-    (
-        f"{row['DebtToEquity']:.2f}"
-        if pd.notna(
-            row["DebtToEquity"]
-        )
-        else "N/A"
-    )
-)
 
 
-# ============================================================
-# METHODOLOGY
-# ============================================================
+    selected = result_df[
+        result_df["Stock"]
+        == selected_stock
+    ].iloc[0]
 
-st.divider()
 
-with st.expander(
-    "ℹ️ Scoring Methodology"
-):
+    # ========================================================
+    # SELECTED STOCK METRICS
+    # ========================================================
 
     st.markdown(
-        """
-### STRONG BUY
-
-Score ≥ 82
-
-### BUY
-
-Score 72–81
-
-### ACCUMULATE
-
-Score 62–71
-
-### HOLD
-
-Score 52–61
-
-### WEAK
-
-Score 42–51
-
-### AVOID
-
-Score below 42.
-
----
-
-### Intraday
-
-Trend: 30%
-
-Momentum: 40%
-
-Risk: 20%
-
-Quality: 5%
-
-Growth: 5%
-
----
-
-### Swing
-
-Trend: 30%
-
-Momentum: 25%
-
-Growth: 15%
-
-Quality: 15%
-
-Risk: 10%
-
-Valuation: 5%
-
----
-
-### Long Term
-
-Growth: 30%
-
-Quality: 25%
-
-Valuation: 15%
-
-Trend: 15%
-
-Risk: 15%
-"""
+        f"### {selected_stock}"
     )
 
 
+    c1, c2, c3, c4 = st.columns(4)
+
+
+    c1.metric(
+        "Price",
+        (
+            f"₹{selected['Price']:,.2f}"
+            if pd.notna(selected["Price"])
+            else "N/A"
+        ),
+        help=(
+            "Latest available closing price."
+        )
+    )
+
+
+    c2.metric(
+        "RSI",
+        (
+            f"{selected['RSI']:.2f}"
+            if pd.notna(selected["RSI"])
+            else "N/A"
+        ),
+        help=get_indicator_tooltip("RSI")
+    )
+
+
+    c3.metric(
+        "MACD",
+        (
+            f"{selected['MACD']:.2f}"
+            if pd.notna(selected["MACD"])
+            else "N/A"
+        ),
+        help=get_indicator_tooltip("MACD")
+    )
+
+
+    c4.metric(
+        "Volume Ratio",
+        (
+            f"{selected['Volume Ratio']:.2f}x"
+            if pd.notna(
+                selected["Volume Ratio"]
+            )
+            else "N/A"
+        ),
+        help=get_indicator_tooltip(
+            "Volume Ratio"
+        )
+    )
+
+
+    # ========================================================
+    # SECONDARY METRICS
+    # ========================================================
+
+    c1, c2, c3, c4 = st.columns(4)
+
+
+    c1.metric(
+        "SMA 20",
+        (
+            f"₹{selected['SMA 20']:,.2f}"
+            if pd.notna(selected["SMA 20"])
+            else "N/A"
+        ),
+        help=get_indicator_tooltip("SMA")
+    )
+
+
+    c2.metric(
+        "SMA 50",
+        (
+            f"₹{selected['SMA 50']:,.2f}"
+            if pd.notna(selected["SMA 50"])
+            else "N/A"
+        ),
+        help=get_indicator_tooltip("SMA")
+    )
+
+
+    c3.metric(
+        "EMA 20",
+        (
+            f"₹{selected['EMA 20']:,.2f}"
+            if pd.notna(selected["EMA 20"])
+            else "N/A"
+        ),
+        help=get_indicator_tooltip("EMA")
+    )
+
+
+    c4.metric(
+        "ATR",
+        (
+            f"{selected['ATR']:.2f}"
+            if pd.notna(selected["ATR"])
+            else "N/A"
+        ),
+        help=get_indicator_tooltip("ATR")
+    )
+
+
+    # ========================================================
+    # TECHNICAL STUDY GUIDE
+    # ========================================================
+
+    st.divider()
+
+    with st.expander(
+        "📚 Investment Screener — Technical Indicator Study Guide"
+    ):
+
+        st.info(
+            "The screener score is an educational technical "
+            "screen. It should not be interpreted as a "
+            "guaranteed probability of profit."
+        )
+
+
+        with st.expander("📖 RSI"):
+            show_indicator_guide(
+                st,
+                "RSI"
+            )
+
+
+        with st.expander("📖 MACD"):
+            show_indicator_guide(
+                st,
+                "MACD"
+            )
+
+
+        with st.expander("📖 SMA"):
+            show_indicator_guide(
+                st,
+                "SMA"
+            )
+
+
+        with st.expander("📖 EMA"):
+            show_indicator_guide(
+                st,
+                "EMA"
+            )
+
+
+        with st.expander("📖 Supertrend"):
+            show_indicator_guide(
+                st,
+                "Supertrend"
+            )
+
+
+        with st.expander("📖 Volume"):
+            show_indicator_guide(
+                st,
+                "Volume"
+            )
+
+
+        with st.expander("📖 Volume Ratio"):
+            show_indicator_guide(
+                st,
+                "Volume Ratio"
+            )
+
+
+        with st.expander("📖 ATR"):
+            show_indicator_guide(
+                st,
+                "ATR"
+            )
+
+
+        with st.expander("📖 VWAP"):
+            show_indicator_guide(
+                st,
+                "VWAP"
+            )
+
+
+    # ========================================================
+    # BUY / SELL / HOLD GUIDE
+    # ========================================================
+
+    with st.expander(
+        "🎯 How to Study the Screener Recommendation"
+    ):
+
+        tab1, tab2, tab3 = st.tabs(
+            [
+                "🟢 Bullish",
+                "🔴 Bearish",
+                "🟡 Neutral",
+            ]
+        )
+
+
+        with tab1:
+
+            st.markdown(
+                get_trading_guide("BUY")
+            )
+
+
+        with tab2:
+
+            st.markdown(
+                get_trading_guide("SELL")
+            )
+
+
+        with tab3:
+
+            st.markdown(
+                get_trading_guide("HOLD")
+            )
+
+
+    # ========================================================
+    # RISK GUIDE
+    # ========================================================
+
+    with st.expander(
+        "⚠️ Risk Management"
+    ):
+
+        st.markdown(
+            get_trading_guide("RISK")
+        )
+
+
 # ============================================================
-# DISCLAIMER
+# NAVIGATION
 # ============================================================
 
 st.divider()
 
-st.caption(
-    """
-⚠️ This application is for educational and research purposes.
-It does not guarantee profits or constitute personalized
-investment advice. Always perform your own research and
-consider risk management before investing.
-"""
-)
+show_page_navigation()

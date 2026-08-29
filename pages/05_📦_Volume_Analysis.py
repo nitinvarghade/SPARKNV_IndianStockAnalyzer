@@ -12,11 +12,20 @@ from services.stock_service import (
     analyze_stock,
 )
 
+from utils.indicator_guide import (
+    get_indicator_tooltip,
+    show_indicator_guide,
+)
+
 
 CURRENT_PAGE = (
     "pages/05_📊_Volume_Analysis.py"
 )
 
+
+# ============================================================
+# HEADER
+# ============================================================
 
 page_header(
     "📊 Volume Analysis",
@@ -24,13 +33,15 @@ page_header(
 )
 
 
-stock = get_selected_stock()
+# ============================================================
+# DATA
+# ============================================================
 
+stock = get_selected_stock()
 
 data = analyze_stock(
     stock
 )
-
 
 latest = data.iloc[-1]
 
@@ -41,63 +52,110 @@ volume_ratio = latest.get(
 )
 
 
+# ============================================================
+# METRICS
+# ============================================================
+
 c1, c2 = st.columns(2)
 
 
 c1.metric(
     "Volume",
-    f"{latest['Volume']:,.0f}"
+    f"{latest['Volume']:,.0f}",
+    help=get_indicator_tooltip("Volume")
 )
 
 
 c2.metric(
     "Volume / 20D Avg",
-    f"{volume_ratio:.2f}x"
+    f"{volume_ratio:.2f}x",
+    help=get_indicator_tooltip("Volume Ratio")
 )
 
+
+# ============================================================
+# CHART
+# ============================================================
 
 st.subheader(
     "📊 Volume Chart"
 )
-
 
 st.bar_chart(
     data["Volume"]
 )
 
 
+# ============================================================
+# VOLUME STUDY GUIDE
+# ============================================================
+
 with st.expander(
-    "ℹ️ Volume Analysis Guide"
+    "📚 Volume Indicator Study Guide"
+):
+
+    show_indicator_guide(
+        st,
+        "Volume"
+    )
+
+    st.markdown(
+        "---"
+    )
+
+    show_indicator_guide(
+        st,
+        "Volume Ratio"
+    )
+
+
+# ============================================================
+# VOLUME CONFIRMATION
+# ============================================================
+
+with st.expander(
+    "🎯 How to Study Volume Confirmation"
 ):
 
     st.markdown(
         """
-### Volume Spike
+### 🟢 Bullish confirmation
 
-A volume spike can indicate increased
-market participation.
+Price breakout
 
-### Bullish Confirmation
++
 
-Price breakout + high volume
+High volume
 
-is generally more meaningful than
-a breakout with weak volume.
+can provide stronger confirmation than a breakout with weak volume.
 
-### Bearish Confirmation
+### 🔴 Bearish confirmation
 
-Price breakdown + high volume
+Price breakdown
 
-can strengthen the bearish signal.
++
 
-### Rule used by this application
+High volume
+
+can strengthen the bearish interpretation.
+
+### 📌 Application rule
 
 Volume >= 1.5 × 20-day average
 
 is treated as a volume spike.
+
+### ⚠️ Important
+
+High volume by itself does not determine direction.
+Always study it together with price movement.
 """
     )
 
+
+# ============================================================
+# NAVIGATION
+# ============================================================
 
 st.divider()
 

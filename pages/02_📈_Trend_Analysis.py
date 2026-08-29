@@ -16,11 +16,20 @@ from analytics.trend_analysis import (
     calculate_daily_trend,
 )
 
+from utils.indicator_guide import (
+    get_indicator_tooltip,
+    show_indicator_guide,
+)
+
 
 CURRENT_PAGE = (
     "pages/02_📈_Trend_Analysis.py"
 )
 
+
+# ============================================================
+# PAGE HEADER
+# ============================================================
 
 page_header(
     "📈 Trend Analysis",
@@ -28,45 +37,69 @@ page_header(
 )
 
 
-stock = get_selected_stock()
+# ============================================================
+# STOCK DATA
+# ============================================================
 
+stock = get_selected_stock()
 
 data = analyze_stock(
     stock
 )
 
-
 trend = calculate_daily_trend(
     data
 )
 
-
 latest = data.iloc[-1]
 
+
+# ============================================================
+# TREND
+# ============================================================
 
 st.subheader(
     f"Trend: {trend}"
 )
 
 
+# ============================================================
+# METRICS
+# ============================================================
+
 c1, c2, c3 = st.columns(3)
 
 
 c1.metric(
     "Price",
-    f"₹{latest['Close']:,.2f}"
+    f"₹{latest['Close']:,.2f}",
+    help=(
+        "Latest closing price of the selected stock."
+    )
 )
+
 
 c2.metric(
     "SMA 20",
-    f"₹{latest['SMA_20']:,.2f}"
+    f"₹{latest['SMA_20']:,.2f}",
+    help=get_indicator_tooltip("SMA")
 )
+
 
 c3.metric(
     "SMA 50",
-    f"₹{latest['SMA_50']:,.2f}"
+    f"₹{latest['SMA_50']:,.2f}",
+    help=get_indicator_tooltip("SMA")
 )
 
+
+# ============================================================
+# TREND CHART
+# ============================================================
+
+st.subheader(
+    "📈 Price vs Moving Averages"
+)
 
 st.line_chart(
     data[
@@ -79,34 +112,58 @@ st.line_chart(
 )
 
 
+# ============================================================
+# TREND STUDY GUIDE
+# ============================================================
+
 with st.expander(
-    "ℹ️ How to use Trend Analysis"
+    "📚 Trend Analysis — Indicator Study Guide",
+    expanded=False,
 ):
+
+    show_indicator_guide(
+        st,
+        "SMA"
+    )
 
     st.markdown(
         """
-### Trend Analysis
+        ---
 
-**Bullish**
-- Price above SMA 20
-- SMA 20 above SMA 50
-- Higher highs / higher lows
+        ### 📌 How to Study the Trend
 
-**Potential Buy**
-- Price above major moving averages
-- SMA 20 crossing above SMA 50
-- Momentum confirmation
+        **Bullish structure**
 
-**Potential Sell**
-- Price below SMA 20 and SMA 50
-- SMA 20 crossing below SMA 50
+        Price > SMA 20 > SMA 50
 
-A trend indicator should generally be
-combined with volume and momentum rather
-than used alone.
-"""
+        **Bearish structure**
+
+        Price < SMA 20 < SMA 50
+
+        ### 🟢 Potential bullish confirmation
+
+        - Price above SMA 20
+        - SMA 20 above SMA 50
+        - Higher highs / higher lows
+        - Positive momentum
+        - Volume confirmation
+
+        ### 🔴 Potential bearish confirmation
+
+        - Price below SMA 20
+        - SMA 20 below SMA 50
+        - Lower highs / lower lows
+        - Negative momentum
+        - Selling volume
+
+        ⚠️ Moving averages are lagging indicators.
+        """
     )
 
+
+# ============================================================
+# NAVIGATION
+# ============================================================
 
 st.divider()
 
