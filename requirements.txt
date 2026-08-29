@@ -1,0 +1,62 @@
+pyspark==4.2.0
+streamlit
+yfinance
+pandas
+numpy
+plotly
+python-dotenv
+
+Indianstockanalyser/
+│
+├── app.py
+│
+├── analytics/
+│   ├── __init__.py
+│   ├── momentum.py
+│   ├── technical_indicators.py
+│   ├── trend_analysis.py
+│   ├── volatility.py
+│   └── volume_analysis.py
+│
+├── components/
+│   ├── __init__.py
+│   ├── charts.py
+│   ├── filters.py
+│   ├── metrics.py
+│   └── tables.py
+│
+├── config/
+│   ├── __init__.py
+│   └── settings.py
+│
+├── data/
+│   ├── cache/
+│   ├── processed/
+│   └── raw/
+│
+├── pages/
+│   ├── 01_dashboard.py
+│   ├── 02_trend_analysis.py
+│   ├── 03_technical_analysis.py
+│   ├── 04_momentum.py
+│   ├── 05_volume_analysis.py
+│   ├── 06_volatility.py
+│   └── 07_stock_comparison.py
+│
+├── services/
+│   ├── __init__.py
+│   ├── market_data.py
+│   ├── spark_session.py
+│   └── stock_service.py
+│
+├── tests/
+│
+├── utils/
+│   ├── __init__.py
+│   ├── constants.py
+│   ├── formatting.py
+│   └── validation.py
+│
+├── .env
+├── .gitignore
+└── requirements.txt

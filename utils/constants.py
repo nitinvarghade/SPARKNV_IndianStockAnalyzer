@@ -1,0 +1,11 @@
+# utils/constants.py
+
+BUY = "BUY"
+
+SELL = "SELL"
+
+HOLD = "HOLD"
+
+STRONG_BUY = "STRONG BUY"
+
+STRONG_SELL = "STRONG SELL"

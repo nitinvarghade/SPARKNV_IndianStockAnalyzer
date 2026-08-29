@@ -1,0 +1,78 @@
+# config/settings.py
+
+APP_NAME = "Indian Stock Analyzer"
+
+DEFAULT_SYMBOL = "RELIANCE.NS"
+
+DEFAULT_PERIOD = "6mo"
+
+DEFAULT_INTERVAL = "1d"
+
+SUPPORTED_PERIODS = [
+    "1mo",
+    "3mo",
+    "6mo",
+    "1y",
+    "2y",
+    "5y",
+]
+
+SUPPORTED_INTERVALS = [
+    "1d",
+    "1wk",
+    "1mo",
+]
+
+NIFTY_50 = [
+    "ADANIENT.NS",
+    "ADANIPORTS.NS",
+    "APOLLOHOSP.NS",
+    "ASIANPAINT.NS",
+    "AXISBANK.NS",
+    "BAJAJ-AUTO.NS",
+    "BAJFINANCE.NS",
+    "BAJAJFINSV.NS",
+    "BEL.NS",
+    "BHARTIARTL.NS",
+    "CIPLA.NS",
+    "COALINDIA.NS",
+    "DRREDDY.NS",
+    "EICHERMOT.NS",
+    "ETERNAL.NS",
+    "GRASIM.NS",
+    "HCLTECH.NS",
+    "HDFCBANK.NS",
+    "HDFCLIFE.NS",
+    "HEROMOTOCO.NS",
+    "HINDALCO.NS",
+    "HINDUNILVR.NS",
+    "ICICIBANK.NS",
+    "INDUSINDBK.NS",
+    "INFY.NS",
+    "ITC.NS",
+    "JIOFIN.NS",
+    "JSWSTEEL.NS",
+    "KOTAKBANK.NS",
+    "LT.NS",
+    "M&M.NS",
+    "MARUTI.NS",
+    "MAXHEALTH.NS",
+    "NESTLEIND.NS",
+    "NTPC.NS",
+    "ONGC.NS",
+    "POWERGRID.NS",
+    "RELIANCE.NS",
+    "SBILIFE.NS",
+    "SBIN.NS",
+    "SHRIRAMFIN.NS",
+    "SUNPHARMA.NS",
+    "TATACONSUM.NS",
+    "TATAMOTORS.NS",
+    "TATASTEEL.NS",
+    "TCS.NS",
+    "TECHM.NS",
+    "TITAN.NS",
+    "TRENT.NS",
+    "ULTRACEMCO.NS",
+    "WIPRO.NS",
+]
