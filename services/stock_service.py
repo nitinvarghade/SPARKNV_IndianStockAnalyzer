@@ -2,65 +2,34 @@
 
 import pandas as pd
 
-
 from services.market_data import (
     download_stock_data,
 )
-
 
 from analytics.technical_indicators import (
     add_technical_indicators,
 )
 
-
 from analytics.trend_analysis import (
     calculate_daily_trend,
 )
-
 
 from analytics.momentum import (
     momentum_score,
 )
 
-
 from analytics.volume_analysis import (
     add_volume_analysis,
 )
-
 
 from analytics.volatility import (
     calculate_volatility,
 )
 
-
 from analytics.candlestick_patterns import (
     detect_candlestick_patterns,
-    get_latest_pattern_text,
+    PATTERN_COLUMNS,
 )
-
-
-# ============================================================
-# HELPERS
-# ============================================================
-
-def _safe_float(
-    value,
-    default=0.0,
-):
-
-    try:
-
-        if pd.isna(value):
-            return default
-
-        return float(value)
-
-    except (
-        TypeError,
-        ValueError,
-    ):
-
-        return default
 
 
 # ============================================================
@@ -72,17 +41,6 @@ def analyze_stock(
     period="6mo",
     interval="1d",
 ):
-    """
-    Complete stock-analysis pipeline.
-
-    Market Data
-        ↓
-    Technical Indicators
-        ↓
-    Volume Analysis
-        ↓
-    Candlestick Patterns
-    """
 
     data = download_stock_data(
         symbol,
@@ -90,14 +48,11 @@ def analyze_stock(
         interval,
     )
 
-    if data is None:
-        return pd.DataFrame()
-
-    if data.empty:
+    if data is None or data.empty:
         return pd.DataFrame()
 
     # --------------------------------------------------------
-    # TECHNICAL INDICATORS
+    # Technical indicators
     # --------------------------------------------------------
 
     data = add_technical_indicators(
@@ -105,7 +60,7 @@ def analyze_stock(
     )
 
     # --------------------------------------------------------
-    # VOLUME
+    # Volume analysis
     # --------------------------------------------------------
 
     data = add_volume_analysis(
@@ -113,7 +68,7 @@ def analyze_stock(
     )
 
     # --------------------------------------------------------
-    # CANDLESTICK PATTERNS
+    # Candlestick patterns
     # --------------------------------------------------------
 
     data = detect_candlestick_patterns(
@@ -124,41 +79,75 @@ def analyze_stock(
 
 
 # ============================================================
+# GET LATEST CANDLESTICK PATTERNS
+# ============================================================
+
+def get_latest_candlestick_patterns(
+    data,
+):
+
+    if data is None or data.empty:
+        return []
+
+    latest = data.iloc[-1]
+
+    patterns = []
+
+    for column in PATTERN_COLUMNS:
+
+        if column not in data.columns:
+            continue
+
+        try:
+
+            if bool(
+                latest[column]
+            ):
+
+                patterns.append(
+                    column.replace(
+                        "_",
+                        " ",
+                    )
+                )
+
+        except Exception:
+            continue
+
+    return patterns
+
+
+def get_latest_candlestick_text(
+    data,
+):
+
+    patterns = (
+        get_latest_candlestick_patterns(
+            data
+        )
+    )
+
+    if not patterns:
+        return "None"
+
+    return ", ".join(
+        patterns
+    )
+
+
+# ============================================================
 # RECOMMENDATION
 # ============================================================
 
 def calculate_recommendation(
     data,
 ):
-    """
-    Calculate technical recommendation.
 
-    Score:
-
-    Price > SMA20        +1
-    Price > SMA50        +1
-    RSI                  +1 / -1
-    MACD                 +1 / -1
-    Supertrend           +2 / -2
-    Volume Spike         +1
-
-    Result:
-
-    >= 6       STRONG BUY
-    >= 3       BUY
-    -1 to 2    HOLD
-    <= -2      SELL
-    <= -4      STRONG SELL
-    """
-
-    if (
-        data is None
-        or data.empty
-    ):
+    if data is None or data.empty:
 
         return (
             "HOLD",
-            50,
+            0,
             [],
         )
 
@@ -168,27 +157,23 @@ def calculate_recommendation(
 
     reasons = []
 
-    # ========================================================
-    # PRICE / SMA 20
-    # ========================================================
+    # --------------------------------------------------------
+    # PRICE VS SMA 20
+    # --------------------------------------------------------
 
-    close = _safe_float(
-        latest.get(
-            "Close",
-            0,
+    if (
+        "SMA_20" in data.columns
+        and
+        pd.notna(
+            latest["SMA_20"]
         )
-    )
+    ):
 
-    sma_20 = _safe_float(
-        latest.get(
-            "SMA_20",
-            0,
-        )
-    )
-
-    if sma_20 > 0:
-
-        if close > sma_20:
+        if (
+            latest["Close"]
+            >
+            latest["SMA_20"]
+        ):
 
             score += 1
 
@@ -204,20 +189,23 @@ def calculate_recommendation(
                 "Price below SMA 20"
             )
 
-    # ========================================================
-    # PRICE / SMA 50
-    # ========================================================
+    # --------------------------------------------------------
+    # PRICE VS SMA 50
+    # --------------------------------------------------------
 
-    sma_50 = _safe_float(
-        latest.get(
-            "SMA_50",
-            0,
+    if (
+        "SMA_50" in data.columns
+        and
+        pd.notna(
+            latest["SMA_50"]
         )
-    )
+    ):
 
-    if sma_50 > 0:
-
-        if close > sma_50:
+        if (
+            latest["Close"]
+            >
+            latest["SMA_50"]
+        ):
 
             score += 1
 
@@ -233,123 +221,122 @@ def calculate_recommendation(
                 "Price below SMA 50"
             )
 
-    # ========================================================
+    # --------------------------------------------------------
     # RSI
-    # ========================================================
+    # --------------------------------------------------------
 
-    rsi = _safe_float(
-        latest.get(
-            "RSI",
-            50,
-        ),
+    rsi = latest.get(
+        "RSI",
         50,
     )
 
+    if pd.notna(rsi):
+
+        if 50 <= rsi <= 70:
+
+            score += 1
+
+            reasons.append(
+                "RSI supports positive momentum"
+            )
+
+        elif rsi < 30:
+
+            score += 1
+
+            reasons.append(
+                "RSI indicates oversold condition"
+            )
+
+        elif rsi > 75:
+
+            score -= 1
+
+            reasons.append(
+                "RSI indicates overbought condition"
+            )
+
+    # --------------------------------------------------------
+    # MACD
+    # --------------------------------------------------------
+
+    macd = latest.get(
+        "MACD",
+        None,
+    )
+
+    macd_signal = latest.get(
+        "MACD_Signal",
+        None,
+    )
+
     if (
-        50 <= rsi <= 70
+        macd is not None
+        and
+        macd_signal is not None
+        and
+        pd.notna(macd)
+        and
+        pd.notna(macd_signal)
     ):
 
-        score += 1
+        if macd > macd_signal:
 
-        reasons.append(
-            "RSI supports bullish momentum"
-        )
+            score += 1
 
-    elif rsi < 30:
+            reasons.append(
+                "MACD bullish"
+            )
 
-        score += 1
+        else:
 
-        reasons.append(
-            "RSI indicates oversold condition"
-        )
+            score -= 1
 
-    elif rsi > 75:
+            reasons.append(
+                "MACD bearish"
+            )
 
-        score -= 1
-
-        reasons.append(
-            "RSI indicates overbought condition"
-        )
-
-    else:
-
-        reasons.append(
-            "RSI neutral"
-        )
-
-    # ========================================================
-    # MACD
-    # ========================================================
-
-    macd = _safe_float(
-        latest.get(
-            "MACD",
-            0,
-        )
-    )
-
-    macd_signal = _safe_float(
-        latest.get(
-            "MACD_Signal",
-            0,
-        )
-    )
-
-    if macd > macd_signal:
-
-        score += 1
-
-        reasons.append(
-            "MACD bullish"
-        )
-
-    else:
-
-        score -= 1
-
-        reasons.append(
-            "MACD bearish"
-        )
-
-    # ========================================================
+    # --------------------------------------------------------
     # SUPERTREND
-    # ========================================================
+    # --------------------------------------------------------
 
-    supertrend_direction = _safe_float(
-        latest.get(
-            "Supertrend_Direction",
-            0,
-        )
+    supertrend = latest.get(
+        "Supertrend_Direction",
+        0,
     )
 
-    if supertrend_direction == 1:
+    if pd.notna(supertrend):
 
-        score += 2
+        if supertrend == 1:
 
-        reasons.append(
-            "Supertrend bullish"
-        )
+            score += 2
 
-    elif supertrend_direction == -1:
+            reasons.append(
+                "Supertrend bullish"
+            )
 
-        score -= 2
+        elif supertrend == -1:
 
-        reasons.append(
-            "Supertrend bearish"
-        )
+            score -= 2
 
-    # ========================================================
+            reasons.append(
+                "Supertrend bearish"
+            )
+
+    # --------------------------------------------------------
     # VOLUME
-    # ========================================================
+    # --------------------------------------------------------
 
-    volume_ratio = _safe_float(
-        latest.get(
-            "Volume_Ratio",
-            0,
-        )
+    volume_ratio = latest.get(
+        "Volume_Ratio",
+        0,
     )
 
-    if volume_ratio >= 1.5:
+    if (
+        pd.notna(volume_ratio)
+        and
+        volume_ratio >= 1.5
+    ):
 
         score += 1
 
@@ -357,9 +344,90 @@ def calculate_recommendation(
             "Volume spike detected"
         )
 
-    # ========================================================
-    # RECOMMENDATION
-    # ========================================================
+    # --------------------------------------------------------
+    # CANDLESTICK CONFIRMATION
+    # --------------------------------------------------------
+
+    bullish_patterns = {
+        "Bullish_Engulfing",
+        "Bullish_Harami",
+        "Hammer",
+        "Inverted_Hammer",
+        "Morning_Star",
+        "Piercing_Pattern",
+        "Three_White_Soldiers",
+        "Bullish_Marubozu",
+    }
+
+    bearish_patterns = {
+        "Bearish_Engulfing",
+        "Bearish_Harami",
+        "Shooting_Star",
+        "Evening_Star",
+        "Dark_Cloud_Cover",
+        "Three_Black_Crows",
+        "Bearish_Marubozu",
+    }
+
+    detected_patterns = (
+        get_latest_candlestick_patterns(
+            data
+        )
+    )
+
+    detected_columns = {
+        pattern.replace(
+            " ",
+            "_",
+        )
+        for pattern in detected_patterns
+    }
+
+    bullish_detected = (
+        detected_columns
+        &
+        bullish_patterns
+    )
+
+    bearish_detected = (
+        detected_columns
+        &
+        bearish_patterns
+    )
+
+    if bullish_detected:
+
+        score += 1
+
+        reasons.append(
+            "Bullish candlestick confirmation: "
+            + ", ".join(
+                p.replace(
+                    "_",
+                    " ",
+                )
+                for p in bullish_detected
+            )
+        )
+
+    if bearish_detected:
+
+        score -= 1
+
+        reasons.append(
+            "Bearish candlestick confirmation: "
+            + ", ".join(
+                p.replace(
+                    "_",
+                    " ",
+                )
+                for p in bearish_detected
+            )
+        )
+
+    # --------------------------------------------------------
+    # FINAL RECOMMENDATION
+    # --------------------------------------------------------
 
     if score >= 6:
 
@@ -385,9 +453,9 @@ def calculate_recommendation(
 
         recommendation = "HOLD"
 
-    # ========================================================
+    # --------------------------------------------------------
     # CONFIDENCE
-    # ========================================================
+    # --------------------------------------------------------
 
     confidence = min(
         95,
@@ -411,23 +479,26 @@ def calculate_recommendation(
 def get_stock_summary(
     symbol,
 ):
-    """
-    Compact summary used by
-    Stock Comparison.
-    """
 
     data = analyze_stock(
         symbol
     )
 
-    if (
-        data is None
-        or data.empty
-    ):
+    if data is None or data.empty:
 
-        raise ValueError(
-            f"No data available for {symbol}"
-        )
+        return {
+            "Symbol": symbol,
+            "Price": 0,
+            "Recommendation": "HOLD",
+            "Confidence": 0,
+            "Trend": "Unknown",
+            "RSI": 0,
+            "MomentumScore": 0,
+            "VolumeRatio": 0,
+            "Volatility": 0,
+            "Candlestick": "None",
+            "Reasons": [],
+        }
 
     (
         recommendation,
@@ -472,7 +543,7 @@ def get_stock_summary(
     return {
         "Symbol": symbol,
 
-        "Price": _safe_float(
+        "Price": float(
             latest.get(
                 "Close",
                 0,
@@ -489,7 +560,7 @@ def get_stock_summary(
 
         "Trend": trend,
 
-        "RSI": _safe_float(
+        "RSI": float(
             latest.get(
                 "RSI",
                 0,
@@ -498,7 +569,7 @@ def get_stock_summary(
 
         "MomentumScore": momentum,
 
-        "VolumeRatio": _safe_float(
+        "VolumeRatio": float(
             latest.get(
                 "Volume_Ratio",
                 0,
@@ -508,7 +579,7 @@ def get_stock_summary(
         "Volatility": volatility,
 
         "Candlestick": (
-            get_latest_pattern_text(
+            get_latest_candlestick_text(
                 data
             )
         ),
