@@ -1,16 +1,38 @@
 # utils/indicator_guide.py
+"""
+Centralized technical-indicator explanations.
+
+This module provides:
+1. Short tooltips for Streamlit help= parameters.
+2. Detailed educational guides.
+3. Buy/sell interpretation.
+4. Indicator-specific warnings.
+
+All pages should use this module instead of duplicating
+indicator explanations.
+"""
 
 INDICATOR_GUIDES = {
+
+    # ============================================================
+    # RSI
+    # ============================================================
 
     "RSI": {
         "title": "Relative Strength Index (RSI)",
         "category": "Momentum",
 
+        "tooltip": (
+            "RSI measures price momentum on a 0–100 scale. "
+            "Below 30 can indicate oversold conditions, while "
+            "above 70 can indicate overbought conditions."
+        ),
+
         "what": """
 RSI measures the speed and strength of recent price movements.
 
-The standard RSI uses a 14-period calculation and ranges
-from 0 to 100.
+The standard configuration uses a 14-period calculation
+and produces a value between 0 and 100.
 """,
 
         "interpretation": """
@@ -25,7 +47,7 @@ Potential bullish confirmation:
 
 • RSI moves above 50
 • RSI is rising
-• Price is above VWAP or important moving averages
+• Price is above VWAP or moving averages
 • MACD confirms
 • Volume supports the move
 """,
@@ -41,17 +63,27 @@ Potential bearish confirmation:
 """,
 
         "warning": """
-RSI above 70 does not automatically mean SELL.
+RSI above 70 does NOT automatically mean SELL.
 
 RSI can remain overbought during a strong uptrend.
 
-RSI below 30 does not automatically mean BUY.
+RSI below 30 does NOT automatically mean BUY.
 """,
     },
+
+    # ============================================================
+    # MACD
+    # ============================================================
 
     "MACD": {
         "title": "Moving Average Convergence Divergence (MACD)",
         "category": "Momentum + Trend",
+
+        "tooltip": (
+            "MACD compares short-term and long-term EMAs to "
+            "identify momentum and possible trend changes. "
+            "The standard configuration is 12/26/9."
+        ),
 
         "what": """
 MACD compares exponential moving averages to identify
@@ -59,9 +91,9 @@ momentum and possible trend changes.
 
 Standard configuration:
 
-EMA 12 - EMA 26
+MACD = EMA 12 - EMA 26
 
-Signal line = 9-period EMA of MACD.
+Signal = 9-period EMA of MACD
 """,
 
         "interpretation": """
@@ -102,13 +134,24 @@ during sideways markets.
 """,
     },
 
+    # ============================================================
+    # MACD HISTOGRAM
+    # ============================================================
+
     "MACD Histogram": {
         "title": "MACD Histogram",
         "category": "Momentum",
 
+        "tooltip": (
+            "MACD Histogram is the difference between MACD "
+            "and its Signal line. It helps show whether "
+            "momentum is strengthening or weakening."
+        ),
+
         "what": """
-The MACD Histogram shows the difference between MACD
-and the Signal line.
+The MACD Histogram represents:
+
+MACD - Signal
 
 It helps identify acceleration or weakening of momentum.
 """,
@@ -127,6 +170,7 @@ Look for:
 • Histogram crossing above zero
 • Increasing positive bars
 • Price confirmation
+• Volume confirmation
 """,
 
         "sell": """
@@ -135,25 +179,40 @@ Look for:
 • Histogram crossing below zero
 • Increasing negative bars
 • Price confirmation
+• Volume confirmation
 """,
 
         "warning": """
-A histogram change is a confirmation tool, not a guaranteed
-reversal signal.
+A histogram change is a confirmation tool,
+not a guaranteed reversal signal.
 """,
     },
+
+    # ============================================================
+    # SMA
+    # ============================================================
 
     "SMA": {
         "title": "Simple Moving Average (SMA)",
         "category": "Trend",
 
+        "tooltip": (
+            "SMA is the average closing price over a selected "
+            "number of periods. SMA 20, 50 and 200 are commonly "
+            "used for short-, medium- and long-term trend analysis."
+        ),
+
         "what": """
 SMA is the average closing price over a selected number
 of periods.
 
-Example:
+Examples:
 
 SMA 20 = average closing price of the last 20 periods.
+
+SMA 50 = average closing price of the last 50 periods.
+
+SMA 200 = average closing price of the last 200 periods.
 """,
 
         "interpretation": """
@@ -161,6 +220,12 @@ SMA 20 = average closing price of the last 20 periods.
 • Price below SMA → bearish bias
 • Rising SMA → improving trend
 • Falling SMA → weakening trend
+
+Common structure:
+
+Price > SMA 20 > SMA 50 → bullish structure
+
+Price < SMA 20 < SMA 50 → bearish structure
 """,
 
         "buy": """
@@ -187,9 +252,19 @@ SMA is a lagging indicator and should not be used alone.
 """,
     },
 
+    # ============================================================
+    # EMA
+    # ============================================================
+
     "EMA": {
         "title": "Exponential Moving Average (EMA)",
         "category": "Trend",
+
+        "tooltip": (
+            "EMA gives greater weight to recent prices and "
+            "therefore reacts faster than an SMA. EMA 9/20/50 "
+            "are useful for short- and medium-term trend analysis."
+        ),
 
         "what": """
 EMA gives greater weight to recent prices.
@@ -227,17 +302,27 @@ EMA can produce false signals in sideways markets.
 """,
     },
 
+    # ============================================================
+    # BOLLINGER BANDS
+    # ============================================================
+
     "Bollinger Bands": {
         "title": "Bollinger Bands",
         "category": "Volatility",
 
-        "what": """
-Bollinger Bands measure price volatility around a moving average.
+        "tooltip": (
+            "Bollinger Bands measure volatility around an SMA. "
+            "The standard configuration uses SMA 20 with "
+            "two standard deviations."
+        ),
 
-Standard settings:
+        "what": """
+Standard configuration:
 
 Middle Band = SMA 20
+
 Upper Band = SMA 20 + 2 standard deviations
+
 Lower Band = SMA 20 - 2 standard deviations
 """,
 
@@ -246,6 +331,7 @@ Lower Band = SMA 20 - 2 standard deviations
 • Price near lower band → weak/possibly oversold area
 • Narrow bands → low volatility
 • Wide bands → high volatility
+• Band squeeze → possible upcoming expansion
 """,
 
         "buy": """
@@ -269,9 +355,19 @@ Touching an upper or lower band alone is NOT a Buy/Sell signal.
 """,
     },
 
+    # ============================================================
+    # VWAP
+    # ============================================================
+
     "VWAP": {
         "title": "Volume Weighted Average Price (VWAP)",
         "category": "Intraday",
+
+        "tooltip": (
+            "VWAP calculates the average traded price weighted "
+            "by volume. Price above VWAP generally indicates "
+            "a bullish intraday bias; below VWAP indicates a bearish bias."
+        ),
 
         "what": """
 VWAP calculates the average traded price weighted by volume.
@@ -305,12 +401,25 @@ Potential exit/short setup:
 
         "warning": """
 VWAP is primarily an intraday indicator.
+
+For daily data, this calculation behaves differently from
+a true session-reset intraday VWAP.
 """,
     },
+
+    # ============================================================
+    # SUPERTREND
+    # ============================================================
 
     "Supertrend": {
         "title": "Supertrend",
         "category": "Trend",
+
+        "tooltip": (
+            "Supertrend combines price and ATR to identify "
+            "trend direction. Price above Supertrend generally "
+            "indicates bullish direction."
+        ),
 
         "what": """
 Supertrend combines price and ATR to identify the prevailing
@@ -320,7 +429,7 @@ trend direction.
         "interpretation": """
 • Supertrend below price → bullish
 • Supertrend above price → bearish
-• Direction changes can indicate a possible trend change
+• Direction changes → possible trend change
 """,
 
         "buy": """
@@ -346,9 +455,19 @@ Supertrend can produce whipsaws during sideways markets.
 """,
     },
 
+    # ============================================================
+    # ATR
+    # ============================================================
+
     "ATR": {
         "title": "Average True Range (ATR)",
         "category": "Volatility",
+
+        "tooltip": (
+            "ATR measures the average size of price movement. "
+            "It measures volatility, not direction, and can "
+            "help with stop-loss and position-sizing decisions."
+        ),
 
         "what": """
 ATR measures the average size of price movement.
@@ -391,9 +510,19 @@ ATR does not tell you whether price will rise or fall.
 """,
     },
 
+    # ============================================================
+    # VOLUME
+    # ============================================================
+
     "Volume": {
         "title": "Trading Volume",
         "category": "Participation",
+
+        "tooltip": (
+            "Volume represents the number of shares traded "
+            "during a period and helps measure participation "
+            "behind price movements."
+        ),
 
         "what": """
 Volume represents the number of shares traded during a period.
@@ -427,46 +556,71 @@ High volume by itself does not tell you the direction.
 """,
     },
 
+    # ============================================================
+    # VOLUME RATIO
+    # ============================================================
+
     "Volume Ratio": {
         "title": "Volume Ratio",
         "category": "Volume",
 
+        "tooltip": (
+            "Volume Ratio compares current volume with the "
+            "20-period average volume. A value of 1.5x means "
+            "current volume is 50% above its average."
+        ),
+
         "what": """
-Volume Ratio compares current volume with the 20-period
-average volume.
+Volume Ratio:
+
+Current Volume / 20-period Average Volume
 """,
 
         "interpretation": """
 • < 1.0x → below-average participation
-• 1.0x–1.5x → normal/increased participation
+• 1.0–1.5x → normal/increased participation
 • ≥ 1.5x → volume spike
 • ≥ 2.0x → very high volume
 """,
 
         "buy": """
-A bullish breakout becomes stronger when Volume Ratio
-is above 1.5x and price confirms.
+A bullish breakout becomes stronger when:
+
+• Volume Ratio > 1.5x
+• Price breaks resistance
+• Trend confirms
 """,
 
         "sell": """
-A bearish breakdown becomes stronger when Volume Ratio
-is above 1.5x and price breaks support.
+A bearish breakdown becomes stronger when:
+
+• Volume Ratio > 1.5x
+• Price breaks support
+• Trend confirms
 """,
 
         "warning": """
-This application currently uses 1.5x as the volume-spike threshold.
+This application uses 1.5x as the volume-spike threshold.
 """,
     },
+
+    # ============================================================
+    # MOMENTUM
+    # ============================================================
 
     "Momentum": {
         "title": "Momentum Analysis",
         "category": "Momentum",
 
-        "what": """
-Momentum measures whether price movement is strengthening
-or weakening.
+        "tooltip": (
+            "Momentum evaluates whether price movement is "
+            "strengthening or weakening using indicators such "
+            "as RSI, MACD and EMA."
+        ),
 
-The application combines RSI, MACD and EMA-based conditions.
+        "what": """
+The application combines RSI, MACD and EMA-based conditions
+to evaluate momentum.
 """,
 
         "interpretation": """
@@ -478,7 +632,7 @@ Positive momentum generally occurs when:
 """,
 
         "buy": """
-Look for multiple confirmations instead of relying
+Look for multiple confirmations rather than relying
 on one momentum indicator.
 """,
 
@@ -492,17 +646,26 @@ Momentum may weaken when:
 
         "warning": """
 Strong momentum can remain strong for a long time.
-Do not automatically sell only because momentum is high.
+
+High momentum does not automatically mean SELL.
 """,
     },
+
+    # ============================================================
+    # VOLATILITY
+    # ============================================================
 
     "Volatility": {
         "title": "Price Volatility",
         "category": "Risk",
 
-        "what": """
-Volatility measures how widely price moves over time.
+        "tooltip": (
+            "Volatility measures how widely price moves over "
+            "time. Higher volatility means larger potential "
+            "moves as well as higher risk."
+        ),
 
+        "what": """
 The application calculates volatility using the standard
 deviation of percentage returns.
 """,
@@ -538,23 +701,31 @@ Volatility measures movement size, not direction.
 """,
     },
 
+    # ============================================================
+    # TREND
+    # ============================================================
+
     "Trend": {
         "title": "Trend Analysis",
         "category": "Trend",
 
+        "tooltip": (
+            "Trend analysis identifies whether price is "
+            "generally moving upward, downward or sideways "
+            "using price structure and moving averages."
+        ),
+
         "what": """
 Trend analysis identifies whether price is generally moving
 upward, downward or sideways.
-
-The application uses moving averages and price structure.
 """,
 
         "interpretation": """
-Bullish structure:
+Bullish:
 
 Price > SMA 20 > SMA 50
 
-Bearish structure:
+Bearish:
 
 Price < SMA 20 < SMA 50
 """,
@@ -566,6 +737,7 @@ Potential bullish confirmation:
 • SMA 20 above SMA 50
 • Higher highs and higher lows
 • Momentum confirms
+• Volume confirms
 """,
 
         "sell": """
@@ -577,20 +749,28 @@ Potential bearish confirmation:
 """,
 
         "warning": """
-Trend indicators are lagging and should be combined with
-momentum and volume.
+Trend indicators are lagging and should be combined
+with momentum and volume.
 """,
     },
+
+    # ============================================================
+    # CANDLESTICK
+    # ============================================================
 
     "Candlestick": {
         "title": "Candlestick Patterns",
         "category": "Price Action",
 
+        "tooltip": (
+            "Candlestick patterns analyze Open, High, Low and "
+            "Close prices to identify possible continuation, "
+            "reversal or indecision patterns."
+        ),
+
         "what": """
 Candlestick patterns describe the relationship between
 Open, High, Low and Close prices.
-
-They can indicate possible changes in price behavior.
 """,
 
         "interpretation": """
@@ -601,14 +781,12 @@ Examples:
 • Bullish Engulfing → possible bullish reversal
 • Bearish Engulfing → possible bearish reversal
 • Doji → indecision
-• Morning Star → potential bullish reversal
-• Evening Star → potential bearish reversal
 """,
 
         "buy": """
-Candlestick patterns become more useful when confirmed by:
+Patterns become more useful when confirmed by:
 
-• Support/resistance
+• Support
 • Volume
 • RSI/MACD
 • Trend
@@ -623,16 +801,74 @@ Bearish patterns are more meaningful when:
 """,
 
         "warning": """
-A candlestick pattern alone should not be treated as a trading signal.
+A candlestick pattern alone should not be treated
+as a trading signal.
 """,
     },
+
+    # ============================================================
+    # HEIKIN ASHI
+    # ============================================================
+
+    "Heikin Ashi": {
+        "title": "Heikin Ashi",
+        "category": "Price Action",
+
+        "tooltip": (
+            "Heikin Ashi modifies candle calculations to smooth "
+            "price movement and make trends easier to visualize."
+        ),
+
+        "what": """
+Heikin Ashi uses modified Open, High, Low and Close calculations
+to reduce short-term market noise.
+""",
+
+        "interpretation": """
+• Consecutive bullish candles → stronger bullish trend
+• Consecutive bearish candles → stronger bearish trend
+• Small bodies/wicks → possible trend weakening
+""",
+
+        "buy": """
+Potential confirmation:
+
+• Bullish Heikin Ashi sequence
+• Price above major moving averages
+• Momentum confirms
+• Volume confirms
+""",
+
+        "sell": """
+Potential bearish confirmation:
+
+• Bearish Heikin Ashi sequence
+• Price below major moving averages
+• Momentum weakens
+""",
+
+        "warning": """
+Heikin Ashi prices are synthetic and should not be used
+as actual execution prices.
+""",
+    },
+
+    # ============================================================
+    # RECOMMENDATION
+    # ============================================================
 
     "Recommendation": {
         "title": "Recommendation Score",
         "category": "Decision Engine",
 
+        "tooltip": (
+            "The recommendation combines multiple technical "
+            "conditions into a BUY, SELL or HOLD assessment. "
+            "It is not a guaranteed prediction."
+        ),
+
         "what": """
-The recommendation combines several technical conditions
+The recommendation engine combines several technical conditions
 into a directional assessment.
 """,
 
@@ -666,17 +902,211 @@ will make a profit.
 }
 
 
+# ============================================================
+# ALIASES
+# ============================================================
+
+INDICATOR_ALIASES = {
+    "SMA 20": "SMA",
+    "SMA 50": "SMA",
+    "SMA 200": "SMA",
+
+    "EMA 9": "EMA",
+    "EMA 20": "EMA",
+    "EMA 50": "EMA",
+
+    "BB Upper": "Bollinger Bands",
+    "BB Middle": "Bollinger Bands",
+    "BB Lower": "Bollinger Bands",
+
+    "MACD Signal": "MACD",
+    "MACD_Signal": "MACD",
+
+    "MACD Histogram": "MACD Histogram",
+    "MACD_Histogram": "MACD Histogram",
+
+    "Volume / 20D Avg": "Volume Ratio",
+
+    "ATR 14": "ATR",
+
+    "Price Volatility": "Volatility",
+}
+
+
+def resolve_indicator_name(indicator):
+    """
+    Resolve an indicator name to the canonical guide key.
+    """
+
+    if indicator in INDICATOR_GUIDES:
+        return indicator
+
+    return INDICATOR_ALIASES.get(
+        indicator,
+        indicator
+    )
+
+
 def get_indicator_guide(indicator):
     """
-    Return educational information for an indicator.
+    Return complete educational information.
     """
-    return INDICATOR_GUIDES.get(indicator)
+
+    key = resolve_indicator_name(indicator)
+
+    return INDICATOR_GUIDES.get(key)
 
 
 def get_indicator_title(indicator):
+    """
+    Return human-readable title.
+    """
+
     guide = get_indicator_guide(indicator)
 
     if not guide:
         return indicator
 
     return guide["title"]
+
+
+def get_indicator_tooltip(indicator):
+    """
+    Return short tooltip text suitable for Streamlit help=.
+    """
+
+    guide = get_indicator_guide(indicator)
+
+    if not guide:
+        return f"Information about {indicator}."
+
+    return guide.get(
+        "tooltip",
+        guide.get("what", "").strip()
+    )
+
+
+def show_indicator_guide(
+    st_module,
+    indicator,
+):
+    """
+    Display a complete educational guide.
+    """
+
+    guide = get_indicator_guide(indicator)
+
+    if not guide:
+        st_module.info(
+            f"No guide is available for {indicator}."
+        )
+        return
+
+    st_module.markdown(
+        f"### {guide['title']}"
+    )
+
+    st_module.caption(
+        f"Category: {guide['category']}"
+    )
+
+    st_module.markdown(
+        "#### What is it?"
+    )
+
+    st_module.markdown(
+        guide["what"]
+    )
+
+    st_module.markdown(
+        "#### How to interpret it"
+    )
+
+    st_module.markdown(
+        guide["interpretation"]
+    )
+
+    st_module.markdown(
+        "#### Potential bullish / buy confirmation"
+    )
+
+    st_module.markdown(
+        guide["buy"]
+    )
+
+    st_module.markdown(
+        "#### Potential bearish / sell confirmation"
+    )
+
+    st_module.markdown(
+        guide["sell"]
+    )
+
+    st_module.warning(
+        guide["warning"]
+    )
+
+
+def get_trading_guide(signal):
+    """
+    Generic trading study guide.
+    """
+
+    guides = {
+
+        "BUY": """
+### Potential BUY study framework
+
+Do not rely on one indicator.
+
+A stronger bullish setup can occur when several
+independent conditions agree:
+
+• Price above important moving averages
+• RSI above 50 and rising
+• MACD above Signal
+• Supertrend bullish
+• Price above VWAP for intraday analysis
+• Volume confirms the move
+• Price action supports the setup
+
+Use risk management and define invalidation before entry.
+""",
+
+        "SELL": """
+### Potential SELL / EXIT study framework
+
+A stronger bearish setup can occur when several
+conditions agree:
+
+• Price below important moving averages
+• RSI below 50 and weakening
+• MACD below Signal
+• Supertrend bearish
+• Price below VWAP for intraday analysis
+• Selling volume increases
+• Bearish price action appears
+
+Do not sell solely because one indicator changes.
+""",
+
+        "HOLD": """
+### HOLD / WAIT study framework
+
+Consider waiting when:
+
+• Indicators disagree
+• Price is moving sideways
+• Volume is weak
+• RSI is neutral
+• MACD is near zero
+• Trend is unclear
+
+Waiting for confirmation can be preferable to forcing a trade.
+""",
+    }
+
+    return guides.get(
+        signal.upper(),
+        ""
+    )

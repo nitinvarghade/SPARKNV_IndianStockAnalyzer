@@ -17,6 +17,11 @@ from analytics.volatility import (
     volatility_status,
 )
 
+from utils.indicator_guide import (
+    get_indicator_tooltip,
+    show_indicator_guide,
+)
+
 
 CURRENT_PAGE = (
     "pages/06_🌊_Volatility.py"
@@ -32,9 +37,28 @@ page_header(
 stock = get_selected_stock()
 
 
-data = analyze_stock(
-    stock
-)
+try:
+
+    data = analyze_stock(
+        stock
+    )
+
+except Exception as error:
+
+    st.error(
+        str(error)
+    )
+
+    st.stop()
+
+
+if data.empty:
+
+    st.warning(
+        f"No data available for {stock}."
+    )
+
+    st.stop()
 
 
 latest = data.iloc[-1]
@@ -44,33 +68,54 @@ volatility = calculate_volatility(
     data
 )
 
-
 status = volatility_status(
     data
 )
 
+
+# ============================================================
+# METRICS
+# ============================================================
 
 c1, c2, c3 = st.columns(3)
 
 
 c1.metric(
     "Volatility",
-    f"{volatility:.2f}%"
+    f"{volatility:.2f}%",
+    help=get_indicator_tooltip(
+        "Volatility"
+    ),
 )
+
 
 c2.metric(
     "Status",
-    status
+    status,
+    help=get_indicator_tooltip(
+        "Volatility"
+    ),
 )
+
 
 c3.metric(
     "ATR",
-    f"{latest['ATR']:.2f}"
+    f"{latest['ATR']:.2f}",
+    help=get_indicator_tooltip(
+        "ATR"
+    ),
 )
 
 
+# ============================================================
+# BOLLINGER
+# ============================================================
+
 st.subheader(
-    "📈 Bollinger Bands"
+    "📈 Bollinger Bands",
+    help=get_indicator_tooltip(
+        "Bollinger Bands"
+    ),
 )
 
 
@@ -86,30 +131,56 @@ st.line_chart(
 )
 
 
+# ============================================================
+# ATR
+# ============================================================
+
+st.subheader(
+    "📊 ATR",
+    help=get_indicator_tooltip(
+        "ATR"
+    ),
+)
+
+
+st.line_chart(
+    data[
+        [
+            "ATR"
+        ]
+    ]
+)
+
+
+# ============================================================
+# GUIDE
+# ============================================================
+
 with st.expander(
-    "ℹ️ Volatility Guide"
+    "📚 Volatility & ATR Explanation"
 ):
 
+    show_indicator_guide(
+        st,
+        "Volatility"
+    )
+
     st.markdown(
-        """
-### High Volatility
+        "---"
+    )
 
-Advantages:
-- Larger price moves
-- More trading opportunities
+    show_indicator_guide(
+        st,
+        "Bollinger Bands"
+    )
 
-Risks:
-- Wider stop-loss
-- Greater drawdown risk
+    st.markdown(
+        "---"
+    )
 
-### Low Volatility
-
-Can indicate consolidation.
-
-A Bollinger Band squeeze can sometimes
-precede a breakout, but direction requires
-confirmation.
-"""
+    show_indicator_guide(
+        st,
+        "ATR"
     )
 
 

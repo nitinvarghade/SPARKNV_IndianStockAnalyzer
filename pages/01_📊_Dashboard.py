@@ -23,6 +23,11 @@ from analytics.technical_indicators import (
     calculate_heikin_ashi,
 )
 
+from utils.indicator_guide import (
+    get_indicator_tooltip,
+    show_indicator_guide,
+)
+
 
 st.set_page_config(
     page_title="Dashboard",
@@ -48,11 +53,16 @@ page_header(
 
 current_stock = get_selected_stock()
 
+
 symbol = st.text_input(
     "NSE Stock Symbol",
     value=current_stock.replace(
         ".NS",
         ""
+    ),
+    help=(
+        "Enter an NSE symbol available in "
+        "data/raw/nifty500.csv."
     ),
 )
 
@@ -79,7 +89,7 @@ selected_stock = get_selected_stock()
 try:
 
     with st.spinner(
-        f"Analyzing {selected_stock}..."
+        f"Processing {selected_stock} from NIFTY500 CSV..."
     ):
 
         data = analyze_stock(
@@ -90,6 +100,15 @@ except Exception as error:
 
     st.error(
         str(error)
+    )
+
+    st.stop()
+
+
+if data.empty:
+
+    st.warning(
+        f"No data available for {selected_stock}."
     )
 
     st.stop()
@@ -118,9 +137,13 @@ price = float(
 )
 
 
-previous = float(
-    data["Close"].iloc[-2]
-) if len(data) > 1 else price
+previous = (
+    float(
+        data["Close"].iloc[-2]
+    )
+    if len(data) > 1
+    else price
+)
 
 
 change = (
@@ -129,54 +152,90 @@ change = (
 
 
 change_pct = (
-    change /
-    previous *
+    change
+    /
+    previous
+    *
     100
     if previous
     else 0
 )
 
 
-c1, c2, c3, c4, c5 = st.columns(5)
+# ============================================================
+# METRICS
+# ============================================================
+
+c1, c2, c3, c4, c5 = (
+    st.columns(5)
+)
 
 
 c1.metric(
     "Price",
     f"₹{price:,.2f}",
-    f"{change_pct:+.2f}%"
+    f"{change_pct:+.2f}%",
+    help=(
+        "Latest closing price from the "
+        "NIFTY500 CSV."
+    ),
 )
+
 
 c2.metric(
     "Recommendation",
-    recommendation
+    recommendation,
+    help=get_indicator_tooltip(
+        "Recommendation"
+    ),
 )
+
 
 c3.metric(
     "Confidence",
-    f"{confidence:.0f}%"
+    f"{confidence:.0f}%",
+    help=(
+        "Model-strength score based on the "
+        "technical conditions used by the "
+        "recommendation engine. It is not a "
+        "statistical probability of profit."
+    ),
 )
+
 
 c4.metric(
     "RSI",
-    f"{latest['RSI']:.2f}"
+    f"{latest['RSI']:.2f}",
+    help=get_indicator_tooltip(
+        "RSI"
+    ),
 )
+
 
 c5.metric(
     "Trend",
     (
         "Bullish"
-        if latest["Supertrend_Direction"] == 1
+        if latest[
+            "Supertrend_Direction"
+        ] == 1
         else "Bearish"
-    )
+    ),
+    help=get_indicator_tooltip(
+        "Supertrend"
+    ),
 )
 
 
 # ============================================================
-# REASONS
+# RECOMMENDATION REASONS
 # ============================================================
 
 st.subheader(
-    "🎯 Why this recommendation?"
+    "🎯 Why this recommendation?",
+    help=get_indicator_tooltip(
+        "Recommendation"
+    ),
 )
 
 
@@ -187,11 +246,22 @@ for reason in reasons:
     )
 
 
+with st.expander(
+    "📚 Recommendation Explanation"
+):
+
+    show_indicator_guide(
+        st,
+        "Recommendation"
+    )
+
+
 # ============================================================
-# CHART TYPE
+# CHART
 # ============================================================
 
 st.divider()
+
 
 chart_type = st.selectbox(
     "Chart Type",
@@ -199,6 +269,11 @@ chart_type = st.selectbox(
         "Candlestick",
         "Heikin Ashi",
     ],
+    help=(
+        "Candlestick shows the original OHLC data. "
+        "Heikin Ashi smooths price movement to make "
+        "trend direction easier to visualize."
+    ),
 )
 
 
@@ -229,18 +304,44 @@ st.plotly_chart(
 
 
 # ============================================================
-# CANDLE PATTERN
+# CANDLESTICK PATTERN
 # ============================================================
 
 st.subheader(
-    "🕯️ Latest Candlestick Pattern"
+    "🕯️ Latest Candlestick Pattern",
+    help=get_indicator_tooltip(
+        "Candlestick"
+    ),
 )
 
+
+pattern = latest.get(
+    "Candlestick",
+    "None"
+)
+
+
 st.info(
-    latest.get(
-        "Candlestick",
-        "None"
+    pattern
+)
+
+
+with st.expander(
+    "📚 Candlestick Pattern Explanation"
+):
+
+    show_indicator_guide(
+        st,
+        "Candlestick"
     )
+
+
+# ============================================================
+# DATA SOURCE
+# ============================================================
+
+st.caption(
+    "Data source: data/raw/nifty500.csv"
 )
 
 

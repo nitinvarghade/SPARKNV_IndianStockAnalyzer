@@ -1,4 +1,4 @@
-# pages/05_📊_Volume_Analysis.py
+# pages/05_📦_Volume_Analysis.py
 
 import streamlit as st
 
@@ -12,14 +12,19 @@ from services.stock_service import (
     analyze_stock,
 )
 
+from utils.indicator_guide import (
+    get_indicator_tooltip,
+    show_indicator_guide,
+)
+
 
 CURRENT_PAGE = (
-    "pages/05_📊_Volume_Analysis.py"
+    "pages/05_📦_Volume_Analysis.py"
 )
 
 
 page_header(
-    "📊 Volume Analysis",
+    "📦 Volume Analysis",
     CURRENT_PAGE
 )
 
@@ -27,17 +32,42 @@ page_header(
 stock = get_selected_stock()
 
 
-data = analyze_stock(
-    stock
-)
+try:
+
+    data = analyze_stock(
+        stock
+    )
+
+except Exception as error:
+
+    st.error(
+        str(error)
+    )
+
+    st.stop()
+
+
+if data.empty:
+
+    st.warning(
+        f"No data available for {stock}."
+    )
+
+    st.stop()
 
 
 latest = data.iloc[-1]
 
 
-volume_ratio = latest.get(
-    "Volume_Ratio",
-    0
+volume = float(
+    latest["Volume"]
+)
+
+volume_ratio = float(
+    latest.get(
+        "Volume_Ratio",
+        0
+    )
 )
 
 
@@ -46,18 +76,57 @@ c1, c2 = st.columns(2)
 
 c1.metric(
     "Volume",
-    f"{latest['Volume']:,.0f}"
+    f"{volume:,.0f}",
+    help=get_indicator_tooltip(
+        "Volume"
+    ),
 )
 
 
 c2.metric(
     "Volume / 20D Avg",
-    f"{volume_ratio:.2f}x"
+    f"{volume_ratio:.2f}x",
+    help=get_indicator_tooltip(
+        "Volume Ratio"
+    ),
 )
 
 
+# ============================================================
+# SPIKE STATUS
+# ============================================================
+
+if volume_ratio >= 2.0:
+
+    st.success(
+        f"🚀 Very high volume: {volume_ratio:.2f}x "
+        "the 20-period average."
+    )
+
+elif volume_ratio >= 1.5:
+
+    st.info(
+        f"📈 Volume spike: {volume_ratio:.2f}x "
+        "the 20-period average."
+    )
+
+else:
+
+    st.caption(
+        f"Volume is {volume_ratio:.2f}x "
+        "the 20-period average."
+    )
+
+
+# ============================================================
+# CHART
+# ============================================================
+
 st.subheader(
-    "📊 Volume Chart"
+    "📊 Volume Chart",
+    help=get_indicator_tooltip(
+        "Volume"
+    ),
 )
 
 
@@ -66,36 +135,26 @@ st.bar_chart(
 )
 
 
+# ============================================================
+# GUIDE
+# ============================================================
+
 with st.expander(
-    "ℹ️ Volume Analysis Guide"
+    "📚 Volume & Volume Ratio Explanation"
 ):
 
+    show_indicator_guide(
+        st,
+        "Volume"
+    )
+
     st.markdown(
-        """
-### Volume Spike
+        "---"
+    )
 
-A volume spike can indicate increased
-market participation.
-
-### Bullish Confirmation
-
-Price breakout + high volume
-
-is generally more meaningful than
-a breakout with weak volume.
-
-### Bearish Confirmation
-
-Price breakdown + high volume
-
-can strengthen the bearish signal.
-
-### Rule used by this application
-
-Volume >= 1.5 × 20-day average
-
-is treated as a volume spike.
-"""
+    show_indicator_guide(
+        st,
+        "Volume Ratio"
     )
 
 

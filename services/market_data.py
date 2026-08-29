@@ -1,172 +1,273 @@
 # services/market_data.py
 
-import time
+"""
+Market-data service.
+
+Primary source:
+    data/raw/nifty500.csv
+
+The application no longer needs Yahoo Finance for normal
+stock analysis.
+
+The loader supports common CSV column names such as:
+
+Symbol / Ticker / Stock
+Date / Datetime
+Open
+High
+Low
+Close
+Volume
+"""
+
+from pathlib import Path
+import os
 
 import pandas as pd
-import yfinance as yf
 
 
 # ============================================================
-# NORMALIZE SYMBOL
+# PROJECT PATH
+# ============================================================
+
+PROJECT_ROOT = Path(
+    __file__
+).resolve().parent.parent
+
+
+DEFAULT_CSV_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "raw"
+    / "nifty500.csv"
+)
+
+
+# Optional absolute path supplied by the user.
+USER_CSV_PATH = Path(
+    r"C:\Users\Priyanka\Documents\GitHub"
+    r"\SPARKNV_IndianStockAnalyzer"
+    r"\data\raw\nifty500.csv"
+)
+
+
+# ============================================================
+# SYMBOL NORMALIZATION
 # ============================================================
 
 def normalize_symbol(symbol):
 
     if symbol is None:
-
         return ""
 
     symbol = str(symbol).strip().upper()
 
-    if not symbol:
-
-        return ""
-
     if symbol.endswith(".NS"):
+        symbol = symbol[:-3]
 
-        return symbol
-
-    return f"{symbol}.NS"
+    return symbol
 
 
 # ============================================================
-# NORMALIZE DATAFRAME
+# COLUMN NORMALIZATION
 # ============================================================
 
-def normalize_market_data(data):
+def normalize_market_columns(data):
 
     if data is None:
-
         return pd.DataFrame()
 
     if data.empty:
-
         return pd.DataFrame()
 
     df = data.copy()
 
-    # Yahoo may return MultiIndex
+    # --------------------------------------------------------
+    # MultiIndex
+    # --------------------------------------------------------
+
     if isinstance(
         df.columns,
         pd.MultiIndex
     ):
 
-        columns = []
+        df.columns = [
+            str(
+                column[0]
+                if isinstance(column, tuple)
+                else column
+            ).strip()
+            for column in df.columns
+        ]
 
-        for col in df.columns:
+    else:
 
-            if isinstance(
-                col,
-                tuple
-            ):
+        df.columns = [
+            str(column).strip()
+            for column in df.columns
+        ]
 
-                columns.append(
-                    str(col[0])
-                )
+    # --------------------------------------------------------
+    # Aliases
+    # --------------------------------------------------------
 
-            else:
+    aliases = {
 
-                columns.append(
-                    str(col)
-                )
+        "symbol": "Symbol",
+        "ticker": "Symbol",
+        "stock": "Symbol",
+        "stock symbol": "Symbol",
+        "nse symbol": "Symbol",
+        "security": "Symbol",
 
-        df.columns = columns
+        "date": "Date",
+        "datetime": "Date",
+        "timestamp": "Date",
+        "time": "Date",
 
-    df.columns = [
-        str(column).strip()
-        for column in df.columns
-    ]
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close",
+
+        "adj close": "Adj Close",
+        "adjusted close": "Adj Close",
+
+        "volume": "Volume",
+        "traded volume": "Volume",
+    }
 
     rename = {}
 
     for column in df.columns:
 
-        lower = column.lower()
+        normalized = (
+            str(column)
+            .strip()
+            .lower()
+        )
 
-        if lower == "open":
-            rename[column] = "Open"
+        if normalized in aliases:
 
-        elif lower == "high":
-            rename[column] = "High"
-
-        elif lower == "low":
-            rename[column] = "Low"
-
-        elif lower == "close":
-            rename[column] = "Close"
-
-        elif lower == "adj close":
-            rename[column] = "Adj Close"
-
-        elif lower == "volume":
-            rename[column] = "Volume"
+            rename[column] = aliases[
+                normalized
+            ]
 
     df.rename(
         columns=rename,
         inplace=True
     )
 
+    # --------------------------------------------------------
+    # Numeric fields
+    # --------------------------------------------------------
+
+    for column in [
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Adj Close",
+        "Volume",
+    ]:
+
+        if column in df.columns:
+
+            df[column] = pd.to_numeric(
+                df[column],
+                errors="coerce"
+            )
+
+    # --------------------------------------------------------
+    # Date
+    # --------------------------------------------------------
+
+    if "Date" in df.columns:
+
+        df["Date"] = pd.to_datetime(
+            df["Date"],
+            errors="coerce"
+        )
+
     return df
 
 
 # ============================================================
-# DOWNLOAD
+# CSV PATH
 # ============================================================
 
-def download_stock_data(
-    symbol,
-    period="6mo",
-    interval="1d"
-):
+def get_data_file_path():
 
-    symbol = normalize_symbol(
-        symbol
+    # 1. Environment variable
+    env_path = os.getenv(
+        "NIFTY500_CSV_PATH"
     )
 
-    if not symbol:
+    if env_path:
 
-        raise ValueError(
-            "Stock symbol is empty."
-        )
+        path = Path(env_path)
 
-    # Important:
-    # period and interval MUST NOT be passed
-    # as part of the ticker symbol.
+        if path.exists():
+            return path
+
+    # 2. User supplied absolute path
+    if USER_CSV_PATH.exists():
+        return USER_CSV_PATH
+
+    # 3. Project-relative path
+    if DEFAULT_CSV_PATH.exists():
+        return DEFAULT_CSV_PATH
+
+    raise FileNotFoundError(
+        "NIFTY500 CSV file was not found.\n\n"
+        f"Expected:\n{DEFAULT_CSV_PATH}\n\n"
+        f"Also checked:\n{USER_CSV_PATH}\n\n"
+        "You can also set the environment variable "
+        "NIFTY500_CSV_PATH."
+    )
+
+
+# ============================================================
+# LOAD FULL CSV
+# ============================================================
+
+def load_nifty500_data():
+
+    path = get_data_file_path()
 
     try:
 
-        ticker = yf.Ticker(
-            symbol
-        )
-
-        data = ticker.history(
-            period=period,
-            interval=interval,
-            auto_adjust=False,
-            actions=False,
+        df = pd.read_csv(
+            path,
+            low_memory=False
         )
 
     except Exception as error:
 
         raise RuntimeError(
-            f"Unable to download "
-            f"{symbol}: {error}"
+            f"Unable to read NIFTY500 CSV:\n"
+            f"{path}\n\n"
+            f"Error: {error}"
         )
 
-
-    data = normalize_market_data(
-        data
+    df = normalize_market_columns(
+        df
     )
 
-
-    if data.empty:
+    if df.empty:
 
         raise ValueError(
-            f"No data found for "
-            f"{symbol}. "
-            f"Please verify the NSE symbol."
+            f"NIFTY500 CSV is empty:\n{path}"
         )
 
+    return df
+
+
+# ============================================================
+# VALIDATE OHLCV
+# ============================================================
+
+def validate_ohlcv(data):
 
     required = [
         "Open",
@@ -176,31 +277,254 @@ def download_stock_data(
         "Volume",
     ]
 
-
     missing = [
-        col
-        for col in required
-        if col not in data.columns
+        column
+        for column in required
+        if column not in data.columns
     ]
-
 
     if missing:
 
         raise ValueError(
-            f"Missing columns for "
-            f"{symbol}: {missing}"
+            "The NIFTY500 CSV does not contain "
+            "complete OHLCV data.\n\n"
+            f"Missing columns: {missing}\n\n"
+            "Required columns:\n"
+            "Open, High, Low, Close, Volume\n\n"
+            "If your CSV contains only the NIFTY 500 "
+            "company list, it cannot be used to calculate "
+            "technical indicators until historical OHLCV "
+            "data is included."
         )
 
 
-    data = data.dropna(
+# ============================================================
+# PREPARE STOCK DATA
+# ============================================================
+
+def prepare_stock_data(
+    data,
+    symbol=None,
+):
+
+    df = normalize_market_columns(
+        data
+    )
+
+    if df.empty:
+        return df
+
+    # --------------------------------------------------------
+    # Filter stock when Symbol exists
+    # --------------------------------------------------------
+
+    if (
+        symbol
+        and "Symbol" in df.columns
+    ):
+
+        requested = normalize_symbol(
+            symbol
+        )
+
+        symbols = (
+            df["Symbol"]
+            .astype(str)
+            .str.strip()
+            .str.upper()
+            .str.replace(
+                ".NS",
+                "",
+                regex=False
+            )
+        )
+
+        df = df[
+            symbols == requested
+        ].copy()
+
+    # --------------------------------------------------------
+    # Validate
+    # --------------------------------------------------------
+
+    validate_ohlcv(
+        df
+    )
+
+    # --------------------------------------------------------
+    # Date index
+    # --------------------------------------------------------
+
+    if "Date" in df.columns:
+
+        df = df.dropna(
+            subset=["Date"]
+        )
+
+        df = df.sort_values(
+            "Date"
+        )
+
+        df = df.drop_duplicates(
+            subset=["Date"],
+            keep="last"
+        )
+
+        df.set_index(
+            "Date",
+            inplace=True
+        )
+
+    else:
+
+        df = df.sort_index()
+
+    # --------------------------------------------------------
+    # Numeric cleanup
+    # --------------------------------------------------------
+
+    for column in [
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Volume",
+    ]:
+
+        df[column] = pd.to_numeric(
+            df[column],
+            errors="coerce"
+        )
+
+    df.dropna(
         subset=[
             "Open",
             "High",
             "Low",
             "Close",
-        ]
+        ],
+        inplace=True
     )
 
+    return df
+
+
+# ============================================================
+# LOAD STOCK FROM CSV
+# ============================================================
+
+def load_stock_from_csv(
+    symbol,
+):
+
+    if not symbol:
+
+        raise ValueError(
+            "Stock symbol is empty."
+        )
+
+    df = load_nifty500_data()
+
+    # --------------------------------------------------------
+    # Multi-stock CSV
+    # --------------------------------------------------------
+
+    if "Symbol" in df.columns:
+
+        stock_df = prepare_stock_data(
+            df,
+            symbol
+        )
+
+        if stock_df.empty:
+
+            raise ValueError(
+                f"No OHLCV records found for "
+                f"{normalize_symbol(symbol)} "
+                f"in nifty500.csv."
+            )
+
+        return stock_df
+
+    # --------------------------------------------------------
+    # Single-stock OHLCV CSV
+    # --------------------------------------------------------
+
+    stock_df = prepare_stock_data(
+        df
+    )
+
+    if stock_df.empty:
+
+        raise ValueError(
+            "nifty500.csv does not contain usable OHLCV data."
+        )
+
+    return stock_df
+
+
+# ============================================================
+# DOWNLOAD COMPATIBILITY FUNCTION
+# ============================================================
+
+def download_stock_data(
+    symbol,
+    period="6mo",
+    interval="1d",
+):
+    """
+    Backward-compatible function name.
+
+    The data is now loaded from nifty500.csv.
+
+    period and interval are retained so existing pages
+    do not need to change their function calls.
+    """
+
+    data = load_stock_from_csv(
+        symbol
+    )
+
+    # --------------------------------------------------------
+    # Period filtering
+    # --------------------------------------------------------
+
+    if (
+        period
+        and period != "max"
+        and isinstance(data.index, pd.DatetimeIndex)
+    ):
+
+        period_days = {
+
+            "1mo": 31,
+            "3mo": 93,
+            "6mo": 186,
+            "1y": 366,
+            "2y": 732,
+            "5y": 1825,
+        }
+
+        days = period_days.get(
+            str(period),
+            None
+        )
+
+        if days:
+
+            cutoff = (
+                data.index.max()
+                - pd.Timedelta(
+                    days=days
+                )
+            )
+
+            filtered = data[
+                data.index >= cutoff
+            ]
+
+            if not filtered.empty:
+                data = filtered
 
     return data
 
@@ -213,12 +537,11 @@ def get_latest_price(symbol):
 
     data = download_stock_data(
         symbol,
-        period="5d",
-        interval="1d"
+        period="max",
+        interval="1d",
     )
 
     if data.empty:
-
         return None
 
     return float(
@@ -233,7 +556,7 @@ def get_latest_price(symbol):
 def safe_download(
     symbol,
     period="6mo",
-    interval="1d"
+    interval="1d",
 ):
 
     try:
@@ -247,3 +570,35 @@ def safe_download(
     except Exception:
 
         return pd.DataFrame()
+
+
+# ============================================================
+# STOCK LIST
+# ============================================================
+
+def get_nifty500_symbols():
+
+    df = load_nifty500_data()
+
+    if "Symbol" not in df.columns:
+
+        return []
+
+    symbols = (
+        df["Symbol"]
+        .dropna()
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        .str.replace(
+            ".NS",
+            "",
+            regex=False
+        )
+        .drop_duplicates()
+        .tolist()
+    )
+
+    return sorted(
+        symbols
+    )

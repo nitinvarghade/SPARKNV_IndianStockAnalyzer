@@ -10,20 +10,13 @@ from analytics.technical_indicators import (
     add_technical_indicators,
 )
 
-from analytics.trend_analysis import (
-    calculate_daily_trend,
-)
-
-from analytics.momentum import (
-    momentum_score,
-)
-
 from analytics.volume_analysis import (
     add_volume_analysis,
 )
 
-from analytics.volatility import (
-    calculate_volatility,
+from analytics.candlestick_patterns import (
+    detect_candlestick_patterns,
+    PATTERN_COLUMNS,
 )
 
 
@@ -34,190 +27,438 @@ from analytics.volatility import (
 def analyze_stock(
     symbol,
     period="6mo",
-    interval="1d"
+    interval="1d",
 ):
 
     data = download_stock_data(
         symbol,
         period,
-        interval
+        interval,
     )
+
+    if data is None or data.empty:
+        return pd.DataFrame()
+
+    # --------------------------------------------------------
+    # Technical indicators
+    # --------------------------------------------------------
 
     data = add_technical_indicators(
         data
     )
 
+    # --------------------------------------------------------
+    # Volume analysis
+    # --------------------------------------------------------
+
     data = add_volume_analysis(
         data
     )
 
+    # --------------------------------------------------------
+    # Candlestick patterns
+    # --------------------------------------------------------
+
+    try:
+
+        data = detect_candlestick_patterns(
+            data
+        )
+
+    except Exception:
+
+        # technical_indicators already creates
+        # a Candlestick column
+        pass
+
     return data
+
+
+# ============================================================
+# LATEST CANDLESTICK PATTERNS
+# ============================================================
+
+def get_latest_candlestick_patterns(
+    data,
+):
+
+    if data is None or data.empty:
+        return []
+
+    latest = data.iloc[-1]
+
+    patterns = []
+
+    # Existing boolean-pattern implementation
+    for column in PATTERN_COLUMNS:
+
+        if column not in data.columns:
+            continue
+
+        try:
+
+            if bool(
+                latest[column]
+            ):
+
+                patterns.append(
+                    column.replace(
+                        "_",
+                        " ",
+                    )
+                )
+
+        except Exception:
+
+            continue
+
+    # Existing text-based implementation
+    if "Candlestick" in data.columns:
+
+        value = latest[
+            "Candlestick"
+        ]
+
+        if (
+            pd.notna(value)
+            and str(value) not in [
+                "",
+                "None",
+                "nan",
+            ]
+        ):
+
+            text = str(value)
+
+            if text not in patterns:
+                patterns.append(
+                    text
+                )
+
+    return patterns
+
+
+def get_latest_candlestick_text(
+    data,
+):
+
+    patterns = (
+        get_latest_candlestick_patterns(
+            data
+        )
+    )
+
+    if not patterns:
+        return "None"
+
+    return ", ".join(
+        patterns
+    )
 
 
 # ============================================================
 # RECOMMENDATION
 # ============================================================
 
-def calculate_recommendation(data):
+def calculate_recommendation(
+    data,
+):
 
     if data is None or data.empty:
 
         return (
             "HOLD",
             0,
-            []
+            [],
         )
 
     latest = data.iloc[-1]
 
     score = 0
-
     reasons = []
 
+    # --------------------------------------------------------
+    # SMA 20
+    # --------------------------------------------------------
+
+    if (
+        "SMA_20" in data.columns
+        and pd.notna(
+            latest["SMA_20"]
+        )
+    ):
+
+        if (
+            latest["Close"]
+            >
+            latest["SMA_20"]
+        ):
+
+            score += 1
+
+            reasons.append(
+                "Price above SMA 20"
+            )
+
+        else:
+
+            score -= 1
+
+            reasons.append(
+                "Price below SMA 20"
+            )
 
     # --------------------------------------------------------
-    # PRICE VS SMA
+    # SMA 50
     # --------------------------------------------------------
 
-    if latest["Close"] > latest["SMA_20"]:
-
-        score += 1
-
-        reasons.append(
-            "Price above SMA 20"
+    if (
+        "SMA_50" in data.columns
+        and pd.notna(
+            latest["SMA_50"]
         )
+    ):
 
-    else:
+        if (
+            latest["Close"]
+            >
+            latest["SMA_50"]
+        ):
 
-        score -= 1
+            score += 1
 
-        reasons.append(
-            "Price below SMA 20"
+            reasons.append(
+                "Price above SMA 50"
+            )
+
+        else:
+
+            score -= 1
+
+            reasons.append(
+                "Price below SMA 50"
+            )
+
+    # --------------------------------------------------------
+    # SMA 200
+    # --------------------------------------------------------
+
+    if (
+        "SMA_200" in data.columns
+        and pd.notna(
+            latest["SMA_200"]
         )
+    ):
 
+        if (
+            latest["Close"]
+            >
+            latest["SMA_200"]
+        ):
 
-    if latest["Close"] > latest["SMA_50"]:
+            score += 1
 
-        score += 1
+            reasons.append(
+                "Price above SMA 200"
+            )
 
-        reasons.append(
-            "Price above SMA 50"
-        )
+        else:
 
-    else:
+            score -= 1
 
-        score -= 1
-
+            reasons.append(
+                "Price below SMA 200"
+            )
 
     # --------------------------------------------------------
     # RSI
     # --------------------------------------------------------
 
-    rsi = latest["RSI"]
+    if (
+        "RSI" in data.columns
+        and pd.notna(
+            latest["RSI"]
+        )
+    ):
 
-
-    if 50 <= rsi <= 70:
-
-        score += 1
-
-        reasons.append(
-            "RSI supports positive momentum"
+        rsi = float(
+            latest["RSI"]
         )
 
-    elif rsi < 30:
+        if rsi >= 55:
 
-        score += 1
+            score += 1
 
-        reasons.append(
-            "RSI indicates oversold condition"
-        )
+            reasons.append(
+                f"RSI positive at {rsi:.1f}"
+            )
 
-    elif rsi > 75:
+        elif rsi <= 45:
 
-        score -= 1
+            score -= 1
 
-        reasons.append(
-            "RSI indicates overbought condition"
-        )
-
+            reasons.append(
+                f"RSI weak at {rsi:.1f}"
+            )
 
     # --------------------------------------------------------
     # MACD
     # --------------------------------------------------------
 
     if (
-        latest["MACD"]
-        >
-        latest["MACD_Signal"]
+        "MACD" in data.columns
+        and "MACD_Signal" in data.columns
     ):
 
-        score += 1
+        macd = latest["MACD"]
+        signal = latest["MACD_Signal"]
 
-        reasons.append(
-            "MACD bullish"
-        )
+        if (
+            pd.notna(macd)
+            and pd.notna(signal)
+        ):
 
-    else:
+            if macd > signal:
 
-        score -= 1
+                score += 1
 
-        reasons.append(
-            "MACD bearish"
-        )
+                reasons.append(
+                    "MACD above Signal"
+                )
 
+            else:
+
+                score -= 1
+
+                reasons.append(
+                    "MACD below Signal"
+                )
 
     # --------------------------------------------------------
-    # SUPERTREND
+    # Supertrend
     # --------------------------------------------------------
 
-    if latest[
+    if (
         "Supertrend_Direction"
-    ] == 1:
+        in data.columns
+    ):
 
-        score += 2
+        direction = latest[
+            "Supertrend_Direction"
+        ]
 
-        reasons.append(
-            "Supertrend bullish"
-        )
+        if direction == 1:
 
-    else:
+            score += 1
 
-        score -= 2
+            reasons.append(
+                "Supertrend bullish"
+            )
 
-        reasons.append(
-            "Supertrend bearish"
-        )
+        elif direction == -1:
 
+            score -= 1
 
-    # --------------------------------------------------------
-    # VOLUME
-    # --------------------------------------------------------
-
-    if latest.get(
-        "Volume_Ratio",
-        0
-    ) >= 1.5:
-
-        score += 1
-
-        reasons.append(
-            "Volume spike detected"
-        )
-
+            reasons.append(
+                "Supertrend bearish"
+            )
 
     # --------------------------------------------------------
-    # FINAL
+    # VWAP
     # --------------------------------------------------------
 
-    if score >= 6:
+    if "VWAP" in data.columns:
+
+        vwap = latest["VWAP"]
+
+        if (
+            pd.notna(vwap)
+        ):
+
+            if (
+                latest["Close"]
+                >
+                vwap
+            ):
+
+                score += 1
+
+                reasons.append(
+                    "Price above VWAP"
+                )
+
+            else:
+
+                score -= 1
+
+                reasons.append(
+                    "Price below VWAP"
+                )
+
+    # --------------------------------------------------------
+    # Volume
+    # --------------------------------------------------------
+
+    if "Volume_Ratio" in data.columns:
+
+        ratio = latest[
+            "Volume_Ratio"
+        ]
+
+        if (
+            pd.notna(ratio)
+            and ratio >= 1.5
+        ):
+
+            if latest["Close"] > 0:
+
+                reasons.append(
+                    f"Volume spike {ratio:.2f}x"
+                )
+
+                # Volume confirms direction
+                if len(data) >= 2:
+
+                    previous_close = (
+                        data["Close"]
+                        .iloc[-2]
+                    )
+
+                    if (
+                        latest["Close"]
+                        >
+                        previous_close
+                    ):
+
+                        score += 1
+
+                    else:
+
+                        score -= 1
+
+    # --------------------------------------------------------
+    # Recommendation
+    # --------------------------------------------------------
+
+    max_score = 9
+
+    confidence = (
+        abs(score)
+        /
+        max_score
+        *
+        100
+    )
+
+    if score >= 5:
 
         recommendation = "STRONG BUY"
 
-    elif score >= 3:
+    elif score >= 2:
 
         recommendation = "BUY"
 
-    elif score <= -4:
+    elif score <= -5:
 
         recommendation = "STRONG SELL"
 
@@ -229,72 +470,8 @@ def calculate_recommendation(data):
 
         recommendation = "HOLD"
 
-
-    confidence = min(
-        95,
-        max(
-            50,
-            50 + abs(score) * 7
-        )
-    )
-
-
     return (
         recommendation,
-        confidence,
-        reasons
+        min(confidence, 100),
+        reasons,
     )
-
-
-# ============================================================
-# STOCK SUMMARY
-# ============================================================
-
-def get_stock_summary(
-    symbol
-):
-
-    data = analyze_stock(
-        symbol
-    )
-
-    recommendation, confidence, reasons = (
-        calculate_recommendation(
-            data
-        )
-    )
-
-    latest = data.iloc[-1]
-
-
-    return {
-        "Symbol": symbol,
-        "Price": float(
-            latest["Close"]
-        ),
-        "Recommendation": recommendation,
-        "Confidence": confidence,
-        "Trend": calculate_daily_trend(
-            data
-        ),
-        "RSI": float(
-            latest["RSI"]
-        ),
-        "MomentumScore": momentum_score(
-            data
-        ),
-        "VolumeRatio": float(
-            latest.get(
-                "Volume_Ratio",
-                0
-            )
-        ),
-        "Volatility": calculate_volatility(
-            data
-        ),
-        "Candlestick": latest.get(
-            "Candlestick",
-            "None"
-        ),
-        "Reasons": reasons,
-    }
