@@ -29,6 +29,10 @@ from utils.indicator_guide import (
 )
 
 
+# ============================================================
+# PAGE CONFIG
+# ============================================================
+
 st.set_page_config(
     page_title="Dashboard",
     page_icon="📊",
@@ -53,7 +57,6 @@ page_header(
 
 current_stock = get_selected_stock()
 
-
 symbol = st.text_input(
     "NSE Stock Symbol",
     value=current_stock.replace(
@@ -61,8 +64,9 @@ symbol = st.text_input(
         ""
     ),
     help=(
-        "Enter an NSE symbol available in "
-        "data/raw/nifty500.csv."
+        "Enter an NSE stock symbol from your "
+        "NIFTY 500 master list. Example: RELIANCE, "
+        "TCS, INFY."
     ),
 )
 
@@ -70,10 +74,25 @@ symbol = st.text_input(
 if st.button(
     "🔄 Load Stock",
     type="primary",
+    use_container_width=False,
 ):
 
-    set_selected_stock(
+    clean_symbol = (
         symbol
+        .strip()
+        .upper()
+    )
+
+    if not clean_symbol:
+
+        st.warning(
+            "Please enter an NSE stock symbol."
+        )
+
+        st.stop()
+
+    set_selected_stock(
+        clean_symbol
     )
 
     st.rerun()
@@ -89,7 +108,7 @@ selected_stock = get_selected_stock()
 try:
 
     with st.spinner(
-        f"Processing {selected_stock} from NIFTY500 CSV..."
+        f"Analyzing {selected_stock}..."
     ):
 
         data = analyze_stock(
@@ -105,10 +124,11 @@ except Exception as error:
     st.stop()
 
 
-if data.empty:
+if data is None or data.empty:
 
     st.warning(
-        f"No data available for {selected_stock}."
+        f"No historical market data available "
+        f"for {selected_stock}."
     )
 
     st.stop()
@@ -152,10 +172,8 @@ change = (
 
 
 change_pct = (
-    change
-    /
-    previous
-    *
+    change /
+    previous *
     100
     if previous
     else 0
@@ -163,12 +181,33 @@ change_pct = (
 
 
 # ============================================================
-# METRICS
+# TREND
 # ============================================================
 
-c1, c2, c3, c4, c5 = (
-    st.columns(5)
+supertrend_direction = latest.get(
+    "Supertrend_Direction",
+    0
 )
+
+
+if supertrend_direction == 1:
+
+    trend = "Bullish"
+
+elif supertrend_direction == -1:
+
+    trend = "Bearish"
+
+else:
+
+    trend = "Neutral"
+
+
+# ============================================================
+# KEY METRICS
+# ============================================================
+
+c1, c2, c3, c4, c5 = st.columns(5)
 
 
 c1.metric(
@@ -176,8 +215,8 @@ c1.metric(
     f"₹{price:,.2f}",
     f"{change_pct:+.2f}%",
     help=(
-        "Latest closing price from the "
-        "NIFTY500 CSV."
+        "Latest available closing price from "
+        "the historical market data."
     ),
 )
 
@@ -195,36 +234,102 @@ c3.metric(
     "Confidence",
     f"{confidence:.0f}%",
     help=(
-        "Model-strength score based on the "
-        "technical conditions used by the "
-        "recommendation engine. It is not a "
-        "statistical probability of profit."
+        "Technical model-strength score. "
+        "This is NOT a statistical probability "
+        "of making a profit."
     ),
 )
 
 
-c4.metric(
-    "RSI",
-    f"{latest['RSI']:.2f}",
-    help=get_indicator_tooltip(
-        "RSI"
-    ),
+rsi_value = latest.get(
+    "RSI"
 )
+
+
+if rsi_value is not None:
+
+    c4.metric(
+        "RSI",
+        f"{float(rsi_value):.2f}",
+        help=get_indicator_tooltip(
+            "RSI"
+        ),
+    )
+
+else:
+
+    c4.metric(
+        "RSI",
+        "N/A",
+        help=get_indicator_tooltip(
+            "RSI"
+        ),
+    )
 
 
 c5.metric(
     "Trend",
-    (
-        "Bullish"
-        if latest[
-            "Supertrend_Direction"
-        ] == 1
-        else "Bearish"
-    ),
+    trend,
     help=get_indicator_tooltip(
         "Supertrend"
     ),
 )
+
+
+# ============================================================
+# STOCK INFORMATION
+# ============================================================
+
+company_name = latest.get(
+    "Company Name"
+)
+
+industry = latest.get(
+    "Industry"
+)
+
+isin = latest.get(
+    "ISIN Code"
+)
+
+
+if company_name or industry or isin:
+
+    with st.expander(
+        "🏢 Company Information"
+    ):
+
+        info1, info2, info3 = st.columns(3)
+
+        info1.write(
+            "**Company**"
+        )
+
+        info1.write(
+            company_name
+            if company_name
+            else "N/A"
+        )
+
+        info2.write(
+            "**Industry**"
+        )
+
+        info2.write(
+            industry
+            if industry
+            else "N/A"
+        )
+
+        info3.write(
+            "**ISIN**"
+        )
+
+        info3.write(
+            isin
+            if isin
+            else "N/A"
+        )
 
 
 # ============================================================
@@ -239,15 +344,28 @@ st.subheader(
 )
 
 
-for reason in reasons:
+if reasons:
 
-    st.write(
-        f"• {reason}"
+    for reason in reasons:
+
+        st.write(
+            f"• {reason}"
+        )
+
+else:
+
+    st.info(
+        "No individual recommendation reasons "
+        "were returned."
     )
 
 
+# ============================================================
+# RECOMMENDATION GUIDE
+# ============================================================
+
 with st.expander(
-    "📚 Recommendation Explanation"
+    "📚 How to interpret the recommendation"
 ):
 
     show_indicator_guide(
@@ -257,7 +375,7 @@ with st.expander(
 
 
 # ============================================================
-# CHART
+# CHART TYPE
 # ============================================================
 
 st.divider()
@@ -270,12 +388,16 @@ chart_type = st.selectbox(
         "Heikin Ashi",
     ],
     help=(
-        "Candlestick shows the original OHLC data. "
-        "Heikin Ashi smooths price movement to make "
-        "trend direction easier to visualize."
+        "Candlestick shows actual OHLC prices. "
+        "Heikin Ashi smooths price movement to "
+        "make trends easier to visualize."
     ),
 )
 
+
+# ============================================================
+# CHART
+# ============================================================
 
 if chart_type == "Candlestick":
 
@@ -304,6 +426,47 @@ st.plotly_chart(
 
 
 # ============================================================
+# CHART GUIDE
+# ============================================================
+
+with st.expander(
+    "📚 Chart & Indicator Guide"
+):
+
+    if chart_type == "Candlestick":
+
+        show_indicator_guide(
+            st,
+            "Bollinger Bands"
+        )
+
+        st.markdown(
+            "---"
+        )
+
+        show_indicator_guide(
+            st,
+            "SMA"
+        )
+
+        st.markdown(
+            "---"
+        )
+
+        show_indicator_guide(
+            st,
+            "EMA"
+        )
+
+    else:
+
+        show_indicator_guide(
+            st,
+            "Heikin Ashi"
+        )
+
+
+# ============================================================
 # CANDLESTICK PATTERN
 # ============================================================
 
@@ -327,7 +490,7 @@ st.info(
 
 
 with st.expander(
-    "📚 Candlestick Pattern Explanation"
+    "📚 Candlestick Pattern — Explanation"
 ):
 
     show_indicator_guide(
@@ -337,11 +500,230 @@ with st.expander(
 
 
 # ============================================================
-# DATA SOURCE
+# QUICK INDICATOR SUMMARY
 # ============================================================
 
-st.caption(
-    "Data source: data/raw/nifty500.csv"
+st.subheader(
+    "📊 Technical Indicator Snapshot"
+)
+
+
+summary_columns = st.columns(6)
+
+
+# RSI
+summary_columns[0].metric(
+    "RSI",
+    (
+        f"{float(latest['RSI']):.2f}"
+        if "RSI" in latest
+        else "N/A"
+    ),
+    help=get_indicator_tooltip(
+        "RSI"
+    ),
+)
+
+
+# MACD
+summary_columns[1].metric(
+    "MACD",
+    (
+        f"{float(latest['MACD']):.2f}"
+        if "MACD" in latest
+        else "N/A"
+    ),
+    help=get_indicator_tooltip(
+        "MACD"
+    ),
+)
+
+
+# VWAP
+summary_columns[2].metric(
+    "VWAP",
+    (
+        f"₹{float(latest['VWAP']):,.2f}"
+        if "VWAP" in latest
+        else "N/A"
+    ),
+    help=get_indicator_tooltip(
+        "VWAP"
+    ),
+)
+
+
+# ATR
+summary_columns[3].metric(
+    "ATR",
+    (
+        f"{float(latest['ATR']):.2f}"
+        if "ATR" in latest
+        else "N/A"
+    ),
+    help=get_indicator_tooltip(
+        "ATR"
+    ),
+)
+
+
+# Volume Ratio
+volume_ratio = latest.get(
+    "Volume_Ratio"
+)
+
+
+summary_columns[4].metric(
+    "Volume Ratio",
+    (
+        f"{float(volume_ratio):.2f}x"
+        if volume_ratio is not None
+        else "N/A"
+    ),
+    help=get_indicator_tooltip(
+        "Volume Ratio"
+    ),
+)
+
+
+# Supertrend
+summary_columns[5].metric(
+    "Supertrend",
+    (
+        f"₹{float(latest['Supertrend']):,.2f}"
+        if "Supertrend" in latest
+        else "N/A"
+    ),
+    help=get_indicator_tooltip(
+        "Supertrend"
+    ),
+)
+
+
+# ============================================================
+# FULL TECHNICAL GUIDE
+# ============================================================
+
+with st.expander(
+    "📖 Complete Technical Indicator Guide"
+):
+
+    tabs = st.tabs(
+        [
+            "RSI",
+            "MACD",
+            "Moving Average",
+            "VWAP",
+            "Supertrend",
+            "Bollinger",
+            "ATR",
+            "Volume",
+        ]
+    )
+
+
+    with tabs[0]:
+
+        show_indicator_guide(
+            st,
+            "RSI"
+        )
+
+
+    with tabs[1]:
+
+        show_indicator_guide(
+            st,
+            "MACD"
+        )
+
+        st.markdown(
+            "---"
+        )
+
+        show_indicator_guide(
+            st,
+            "MACD Histogram"
+        )
+
+
+    with tabs[2]:
+
+        show_indicator_guide(
+            st,
+            "SMA"
+        )
+
+        st.markdown(
+            "---"
+        )
+
+        show_indicator_guide(
+            st,
+            "EMA"
+        )
+
+
+    with tabs[3]:
+
+        show_indicator_guide(
+            st,
+            "VWAP"
+        )
+
+
+    with tabs[4]:
+
+        show_indicator_guide(
+            st,
+            "Supertrend"
+        )
+
+
+    with tabs[5]:
+
+        show_indicator_guide(
+            st,
+            "Bollinger Bands"
+        )
+
+
+    with tabs[6]:
+
+        show_indicator_guide(
+            st,
+            "ATR"
+        )
+
+
+    with tabs[7]:
+
+        show_indicator_guide(
+            st,
+            "Volume"
+        )
+
+        st.markdown(
+            "---"
+        )
+
+        show_indicator_guide(
+            st,
+            "Volume Ratio"
+        )
+
+
+# ============================================================
+# DISCLAIMER
+# ============================================================
+
+st.divider()
+
+st.info(
+    "⚠️ Technical indicators are analytical tools and "
+    "do not guarantee profit. Use multiple confirmations, "
+    "position sizing and risk management before making "
+    "an investment decision."
 )
 
 

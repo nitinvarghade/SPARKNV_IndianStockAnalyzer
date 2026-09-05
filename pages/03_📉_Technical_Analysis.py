@@ -23,10 +23,6 @@ CURRENT_PAGE = (
 )
 
 
-# ============================================================
-# HEADER
-# ============================================================
-
 page_header(
     "📉 Technical Analysis",
     CURRENT_PAGE
@@ -58,7 +54,7 @@ except Exception as error:
 if data is None or data.empty:
 
     st.warning(
-        f"No data available for {stock}."
+        f"No historical data available for {stock}."
     )
 
     st.stop()
@@ -76,7 +72,6 @@ indicator = st.selectbox(
     [
         "RSI",
         "MACD",
-        "MACD Histogram",
         "Bollinger Bands",
         "Moving Averages",
         "VWAP",
@@ -84,8 +79,8 @@ indicator = st.selectbox(
         "ATR",
     ],
     help=(
-        "Select a technical indicator to view its "
-        "current value, chart and educational guide."
+        "Select an indicator. Hover over the ⓘ icons "
+        "to understand what each indicator means."
     ),
 )
 
@@ -103,17 +98,9 @@ if indicator == "RSI":
         ),
     )
 
-    value = latest.get(
-        "RSI"
-    )
-
     st.metric(
         "RSI",
-        (
-            f"{value:.2f}"
-            if value is not None
-            else "N/A"
-        ),
+        f"{latest['RSI']:.2f}",
         help=get_indicator_tooltip(
             "RSI"
         ),
@@ -124,7 +111,7 @@ if indicator == "RSI":
     )
 
     with st.expander(
-        "📚 RSI Explanation & Trading Guide"
+        "📚 RSI — Explanation & Buy/Sell Guide"
     ):
 
         show_indicator_guide(
@@ -155,7 +142,9 @@ elif indicator == "MACD":
         ]
     )
 
-    st.metric(
+    c1, c2, c3 = st.columns(3)
+
+    c1.metric(
         "MACD",
         f"{latest['MACD']:.4f}",
         help=get_indicator_tooltip(
@@ -163,7 +152,7 @@ elif indicator == "MACD":
         ),
     )
 
-    st.metric(
+    c2.metric(
         "Signal",
         f"{latest['MACD_Signal']:.4f}",
         help=get_indicator_tooltip(
@@ -171,7 +160,7 @@ elif indicator == "MACD":
         ),
     )
 
-    st.metric(
+    c3.metric(
         "Histogram",
         f"{latest['MACD_Histogram']:.4f}",
         help=get_indicator_tooltip(
@@ -180,7 +169,7 @@ elif indicator == "MACD":
     )
 
     with st.expander(
-        "📚 MACD Explanation & Trading Guide"
+        "📚 MACD — Explanation & Trading Guide"
     ):
 
         show_indicator_guide(
@@ -199,7 +188,7 @@ elif indicator == "MACD":
 
 
 # ============================================================
-# BOLLINGER BANDS
+# BOLLINGER
 # ============================================================
 
 elif indicator == "Bollinger Bands":
@@ -227,32 +216,29 @@ elif indicator == "Bollinger Bands":
     c1.metric(
         "Upper Band",
         f"₹{latest['BB_Upper']:.2f}",
-        help=(
-            "Upper Bollinger Band = SMA 20 "
-            "+ 2 standard deviations."
+        help=get_indicator_tooltip(
+            "BB Upper"
         ),
     )
 
     c2.metric(
         "Middle Band",
         f"₹{latest['BB_Middle']:.2f}",
-        help=(
-            "Middle Bollinger Band is the "
-            "20-period Simple Moving Average."
+        help=get_indicator_tooltip(
+            "BB Middle"
         ),
     )
 
     c3.metric(
         "Lower Band",
         f"₹{latest['BB_Lower']:.2f}",
-        help=(
-            "Lower Bollinger Band = SMA 20 "
-            "- 2 standard deviations."
+        help=get_indicator_tooltip(
+            "BB Lower"
         ),
     )
 
     with st.expander(
-        "📚 Bollinger Bands Explanation & Trading Guide"
+        "📚 Bollinger Bands — Explanation & Trading Guide"
     ):
 
         show_indicator_guide(
@@ -275,19 +261,17 @@ elif indicator == "Moving Averages":
         ),
     )
 
-    columns = [
-        "Close",
-        "SMA_20",
-        "SMA_50",
-        "SMA_200",
-        "EMA_9",
-        "EMA_20",
-        "EMA_50",
-    ]
-
     available = [
         column
-        for column in columns
+        for column in [
+            "Close",
+            "SMA_20",
+            "SMA_50",
+            "SMA_200",
+            "EMA_9",
+            "EMA_20",
+            "EMA_50",
+        ]
         if column in data.columns
     ]
 
@@ -356,7 +340,7 @@ elif indicator == "Moving Averages":
     )
 
     with st.expander(
-        "📚 Moving Average Explanation & Trading Guide"
+        "📚 Moving Averages — Explanation & Trading Guide"
     ):
 
         show_indicator_guide(
@@ -381,7 +365,7 @@ elif indicator == "Moving Averages":
 elif indicator == "VWAP":
 
     st.subheader(
-        "Volume Weighted Average Price (VWAP)",
+        "VWAP",
         help=get_indicator_tooltip(
             "VWAP"
         ),
@@ -396,18 +380,7 @@ elif indicator == "VWAP":
         ]
     )
 
-    c1, c2 = st.columns(2)
-
-    c1.metric(
-        "Current Price",
-        f"₹{latest['Close']:.2f}",
-        help=(
-            "Latest closing price in the selected "
-            "CSV data."
-        ),
-    )
-
-    c2.metric(
+    st.metric(
         "VWAP",
         f"₹{latest['VWAP']:.2f}",
         help=get_indicator_tooltip(
@@ -416,7 +389,7 @@ elif indicator == "VWAP":
     )
 
     with st.expander(
-        "📚 VWAP Explanation & Trading Guide"
+        "📚 VWAP — Explanation & Intraday Guide"
     ):
 
         show_indicator_guide(
@@ -451,11 +424,17 @@ elif indicator == "Supertrend":
         "Supertrend_Direction"
     )
 
-    trend = (
-        "Bullish"
-        if direction == 1
-        else "Bearish"
-    )
+    if direction == 1:
+
+        trend = "Bullish"
+
+    elif direction == -1:
+
+        trend = "Bearish"
+
+    else:
+
+        trend = "Neutral"
 
     c1, c2 = st.columns(2)
 
@@ -470,14 +449,13 @@ elif indicator == "Supertrend":
     c2.metric(
         "Direction",
         trend,
-        help=(
-            "Bullish when price is generally above "
-            "the Supertrend line; bearish when below."
+        help=get_indicator_tooltip(
+            "Supertrend"
         ),
     )
 
     with st.expander(
-        "📚 Supertrend Explanation & Trading Guide"
+        "📚 Supertrend — Explanation & Trading Guide"
     ):
 
         show_indicator_guide(
@@ -512,7 +490,7 @@ elif indicator == "ATR":
     )
 
     with st.expander(
-        "📚 ATR Explanation & Trading Guide"
+        "📚 ATR — Explanation & Risk Guide"
     ):
 
         show_indicator_guide(
@@ -522,20 +500,16 @@ elif indicator == "ATR":
 
 
 # ============================================================
-# COMMON WARNING
+# FOOTER
 # ============================================================
 
 st.divider()
 
 st.info(
-    "⚠️ Technical indicators are analytical tools, "
-    "not guaranteed Buy/Sell predictions. Use multiple "
-    "independent confirmations and risk management."
+    "Technical indicators are analytical tools. "
+    "Use multiple confirmations and risk management; "
+    "no indicator guarantees profit."
 )
 
-
-# ============================================================
-# NAVIGATION
-# ============================================================
 
 show_page_navigation()

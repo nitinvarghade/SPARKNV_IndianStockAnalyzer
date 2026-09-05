@@ -4,7 +4,7 @@ import streamlit as st
 
 
 def stock_selector(
-    default="RELIANCE.NS"
+    default="ATHERENERG.NS"
 ):
 
     value = st.text_input(
