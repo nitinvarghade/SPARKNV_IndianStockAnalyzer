@@ -10,7 +10,7 @@ def stock_selector(
     value = st.text_input(
         "Stock Symbol",
         value=default.replace(
-            ".NS",
+            "ATHERENERG.NS",
             ""
         ),
     )
