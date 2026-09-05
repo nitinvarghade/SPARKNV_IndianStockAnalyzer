@@ -1,39 +1,4 @@
-# ============================================================
 # pages/03_📉_Technical_Analysis.py
-#
-# Professional Technical Analysis Dashboard
-#
-# TAB BASED VERSION
-#
-# Tabs:
-#   1. Overview
-#   2. Moving Averages
-#   3. Momentum
-#   4. Volatility
-#   5. Intraday
-#   6. Candlestick
-#   7. Trade Setup
-#   8. Indicator Guide
-#
-# Features:
-#   - Responsive device-friendly UI
-#   - Heikin Ashi / Candlestick / OHLC / Line
-#   - Multiple technical indicators
-#   - Favorite 1 / 2 / 3
-#   - Professional recommendation engine
-#   - STRONG BUY / BUY / HOLD / SELL / STRONG SELL
-#   - Confidence level
-#   - Bullish / Bearish factor analysis
-#   - Recommendation reasons
-#   - Buy zone
-#   - Entry trigger
-#   - Stop loss
-#   - Target 1 / Target 2
-#   - Risk / Reward
-#   - Intraday / Swing / Long Term
-#   - Candlestick pattern detection
-#   - Indicator explanations
-# ============================================================
 
 import streamlit as st
 import pandas as pd
@@ -41,13 +6,11 @@ import numpy as np
 import plotly.graph_objects as go
 
 from services.stock_service import analyze_stock
-
 from components.navigation import (
     get_selected_stock,
     page_header,
     show_page_navigation,
 )
-
 from utils.indicator_guide import (
     get_indicator_tooltip,
     show_indicator_guide,
@@ -65,12 +28,35 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-CURRENT_PAGE = "pages/03_📉_Technical_Analysis.py"
-
 
 # ============================================================
 # CONSTANTS
 # ============================================================
+
+TREND_INDICATORS = [
+    "SMA 20",
+    "SMA 50",
+    "EMA 20",
+    "EMA 50",
+    "VWAP",
+    "Supertrend",
+]
+
+MOMENTUM_INDICATORS = [
+    "RSI",
+    "MACD",
+    "Momentum",
+]
+
+VOLATILITY_INDICATORS = [
+    "Bollinger Bands",
+    "ATR",
+]
+
+VOLUME_INDICATORS = [
+    "Volume",
+    "Volume Ratio",
+]
 
 OVERLAY_INDICATORS = [
     "SMA 20",
@@ -92,8 +78,22 @@ PANEL_INDICATORS = [
 ]
 
 ALL_INDICATORS = (
-    OVERLAY_INDICATORS
-    + PANEL_INDICATORS
+    TREND_INDICATORS
+    + [
+        x for x in MOMENTUM_INDICATORS
+        if x not in TREND_INDICATORS
+    ]
+    + [
+        x for x in VOLATILITY_INDICATORS
+        if x not in TREND_INDICATORS
+        and x not in MOMENTUM_INDICATORS
+    ]
+    + [
+        x for x in VOLUME_INDICATORS
+        if x not in TREND_INDICATORS
+        and x not in MOMENTUM_INDICATORS
+        and x not in VOLATILITY_INDICATORS
+    ]
 )
 
 DEFAULT_INDICATORS = [
@@ -106,47 +106,51 @@ DEFAULT_INDICATORS = [
     "Supertrend",
 ]
 
+TIMEFRAMES = [
+    "Intraday",
+    "Swing",
+    "Long Term",
+]
+
+PERIODS = [
+    "30 Days",
+    "60 Days",
+    "90 Days",
+    "180 Days",
+    "1 Year",
+    "2 Years",
+]
+
+GRAPH_TYPES = [
+    "Heikin Ashi",
+    "Candlestick",
+    "OHLC",
+    "Line",
+]
+
 
 # ============================================================
 # SESSION STATE
 # ============================================================
 
-if "technical_favorite_1" not in st.session_state:
-    st.session_state["technical_favorite_1"] = (
-        DEFAULT_INDICATORS.copy()
-    )
+SESSION_DEFAULTS = {
+    "technical_favorite_1": "",
+    "technical_favorite_2": "",
+    "technical_favorite_3": "",
+    "technical_selected_indicators": DEFAULT_INDICATORS.copy(),
+    "technical_strategy_mode": "Intraday",
+    "technical_graph_type": "Heikin Ashi",
+    "technical_period": "90 Days",
+}
 
-if "technical_favorite_2" not in st.session_state:
-    st.session_state["technical_favorite_2"] = []
+for key, value in SESSION_DEFAULTS.items():
 
-if "technical_favorite_3" not in st.session_state:
-    st.session_state["technical_favorite_3"] = []
+    if key not in st.session_state:
 
-if "technical_selected_indicators" not in st.session_state:
-    st.session_state["technical_selected_indicators"] = (
-        DEFAULT_INDICATORS.copy()
-    )
-
-if "technical_strategy_mode" not in st.session_state:
-    st.session_state["technical_strategy_mode"] = "Intraday"
-
-if "technical_graph_type" not in st.session_state:
-    st.session_state["technical_graph_type"] = "Heikin Ashi"
-
-if "technical_period" not in st.session_state:
-    st.session_state["technical_period"] = "90 Days"
-
-
-# ============================================================
-# PAGE HEADER
-# ============================================================
-
-page_header(
-    "📉 Technical Analysis",
-    CURRENT_PAGE,
-)
-
-show_page_navigation()
+        if isinstance(value, list):
+            st.session_state[key] = value.copy()
+        else:
+            st.session_state[key] = value
 
 
 # ============================================================
@@ -155,358 +159,529 @@ show_page_navigation()
 
 st.markdown(
     """
-    <style>
+<style>
 
-    button[data-baseweb="tab"] {
-        font-size: 14px;
-        font-weight: 600;
-        padding-left: 12px;
-        padding-right: 12px;
-        white-space: nowrap;
-    }
+/* ==========================================================
+   GLOBAL
+   ========================================================== */
 
-    div[data-baseweb="tab-list"] {
-        gap: 4px;
-        overflow-x: auto;
-        scrollbar-width: thin;
-    }
+.block-container {
+    padding-top: 1.2rem;
+    padding-bottom: 2rem;
+}
 
-    div[data-baseweb="tab-list"]::-webkit-scrollbar {
-        height: 4px;
-    }
 
-    div[data-testid="stMetric"] {
-        min-width: 0;
-    }
+/* ==========================================================
+   TITLES
+   ========================================================== */
 
-    div[data-testid="stMetricValue"] {
-        font-size: clamp(18px, 2vw, 28px);
+.main-title {
+    font-size: clamp(1.35rem, 2.5vw, 2rem);
+    font-weight: 800;
+    line-height: 1.2;
+    margin-bottom: 0.25rem;
+}
+
+.sub-title {
+    color: #6b7280;
+    font-size: clamp(0.82rem, 1.5vw, 0.98rem);
+    margin-bottom: 1rem;
+}
+
+.section-title {
+    font-size: clamp(1.05rem, 2vw, 1.3rem);
+    font-weight: 750;
+    margin-top: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+
+/* ==========================================================
+   CONTROL AREA
+   ========================================================== */
+
+.control-panel {
+    border: 1px solid rgba(128,128,128,0.20);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 14px;
+    background: rgba(128,128,128,0.025);
+}
+
+.control-heading {
+    font-size: 1.05rem;
+    font-weight: 750;
+    margin-bottom: 10px;
+}
+
+
+/* ==========================================================
+   INDICATOR CHIP AREA
+   ========================================================== */
+
+.indicator-chip-wrapper {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 0 2px 0;
+}
+
+.indicator-chip-container {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    max-width: 100%;
+}
+
+.indicator-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    max-width: 210px;
+    min-height: 30px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1px solid rgba(80,120,200,0.25);
+    background: rgba(80,120,200,0.08);
+    color: inherit;
+    font-size: 0.82rem;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
+}
+
+.indicator-chip:hover {
+    background: rgba(80,120,200,0.14);
+}
+
+.indicator-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(128,128,128,0.10);
+    font-size: 0.78rem;
+    font-weight: 650;
+}
+
+
+/* ==========================================================
+   INDICATOR CATEGORY BOX
+   ========================================================== */
+
+.indicator-category {
+    border: 1px solid rgba(128,128,128,0.16);
+    border-radius: 12px;
+    padding: 12px;
+    min-height: 100%;
+}
+
+.indicator-category-title {
+    font-size: 0.88rem;
+    font-weight: 750;
+    margin-bottom: 5px;
+}
+
+.indicator-category-help {
+    font-size: 0.76rem;
+    color: #6b7280;
+    margin-bottom: 8px;
+}
+
+
+/* ==========================================================
+   FAVORITES
+   ========================================================== */
+
+.favorite-container {
+    border: 1px solid rgba(128,128,128,0.16);
+    border-radius: 14px;
+    padding: 14px;
+    margin-top: 4px;
+}
+
+.favorite-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+
+/* ==========================================================
+   RECOMMENDATION
+   ========================================================== */
+
+.recommendation-card {
+    border-radius: 16px;
+    padding: 22px;
+    margin: 12px 0 20px 0;
+    border: 1px solid rgba(128,128,128,0.20);
+    box-shadow: 0 3px 14px rgba(0,0,0,0.08);
+}
+
+.recommendation-title {
+    font-size: 2rem;
+    font-weight: 900;
+}
+
+.recommendation-subtitle {
+    margin-top: 6px;
+    font-size: 0.95rem;
+    opacity: 0.85;
+}
+
+
+/* ==========================================================
+   FACTORS
+   ========================================================== */
+
+.factor-card {
+    border: 1px solid rgba(128,128,128,0.18);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 8px;
+}
+
+.factor-positive {
+    border-left: 4px solid #169c5a;
+}
+
+.factor-negative {
+    border-left: 4px solid #d14343;
+}
+
+
+/* ==========================================================
+   TRADE SETUP
+   ========================================================== */
+
+.trade-level {
+    border: 1px solid rgba(128,128,128,0.20);
+    border-radius: 12px;
+    padding: 14px;
+    min-height: 90px;
+    background: rgba(128,128,128,0.035);
+}
+
+.setup-box {
+    border: 1px solid rgba(128,128,128,0.2);
+    border-radius: 14px;
+    padding: 18px;
+    margin-top: 12px;
+}
+
+.info-box {
+    border-left: 5px solid #3685d1;
+    background: rgba(54,133,209,0.08);
+    padding: 12px 16px;
+    border-radius: 8px;
+}
+
+
+/* ==========================================================
+   MOBILE
+   ========================================================== */
+
+@media (max-width: 900px) {
+
+    .block-container {
+        padding-left: 1rem;
+        padding-right: 1rem;
     }
 
     .recommendation-card {
-        padding: 18px;
-        border-radius: 14px;
-        border: 1px solid rgba(128,128,128,0.25);
-        margin-top: 10px;
-        margin-bottom: 15px;
+        padding: 16px;
     }
 
     .recommendation-title {
-        font-size: 28px;
-        font-weight: 800;
-        margin-bottom: 5px;
+        font-size: 1.55rem;
     }
 
-    .recommendation-subtitle {
-        font-size: 14px;
-        opacity: 0.85;
+    .indicator-chip {
+        max-width: 170px;
+    }
+}
+
+
+@media (max-width: 600px) {
+
+    .block-container {
+        padding-left: 0.7rem;
+        padding-right: 0.7rem;
     }
 
-    .signal-badge {
-        display: inline-block;
-        padding: 6px 12px;
-        border-radius: 20px;
-        font-weight: 700;
-        font-size: 13px;
-        margin-right: 6px;
-        margin-bottom: 5px;
+    .control-panel {
+        padding: 12px;
+        border-radius: 12px;
     }
 
-    .reason-box {
-        padding: 10px 12px;
-        border-radius: 9px;
-        border: 1px solid rgba(128,128,128,0.18);
-        margin-bottom: 6px;
+    .indicator-chip {
+        max-width: 145px;
+        font-size: 0.76rem;
+        padding: 5px 9px;
     }
 
-    @media (max-width: 768px) {
-
-        button[data-baseweb="tab"] {
-            font-size: 12px;
-            padding-left: 8px;
-            padding-right: 8px;
-        }
-
-        div[data-testid="stMetricValue"] {
-            font-size: 18px;
-        }
-
-        .block-container {
-            padding-left: 0.75rem;
-            padding-right: 0.75rem;
-        }
-
-        .recommendation-title {
-            font-size: 22px;
-        }
+    .section-title {
+        margin-top: 0.8rem;
     }
 
-    </style>
-    """,
+    .recommendation-card {
+        padding: 13px;
+        border-radius: 12px;
+    }
+}
+
+
+/* ==========================================================
+   STREAMLIT MULTISELECT
+   ========================================================== */
+
+/*
+   Give the indicator selector enough vertical room.
+   This is intentionally NOT placed inside a narrow column.
+*/
+
+div[data-baseweb="select"] {
+    min-height: 42px;
+}
+
+div[data-baseweb="select"] > div {
+    min-height: 42px;
+}
+
+
+/* ==========================================================
+   EXPANDER
+   ========================================================== */
+
+div[data-testid="stExpander"] {
+    border-radius: 14px;
+}
+
+
+/* ==========================================================
+   PLOTLY
+   ========================================================== */
+
+.js-plotly-plot,
+.plot-container {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+</style>
+""",
     unsafe_allow_html=True,
 )
 
 
 # ============================================================
-# HELPER FUNCTIONS
+# UTILITY FUNCTIONS
 # ============================================================
 
-def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize dataframe column names."""
+def normalize_columns(df):
 
     if df is None or df.empty:
         return pd.DataFrame()
 
     result = df.copy()
 
-    result.columns = [
-        str(col)
-        .strip()
-        .replace(" ", "_")
-        for col in result.columns
-    ]
+    rename_map = {}
+
+    for col in result.columns:
+
+        clean = str(col).strip()
+
+        normalized = (
+            clean
+            .lower()
+            .replace(" ", "_")
+            .replace("-", "_")
+        )
+
+        mapping = {
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close",
+            "adj_close": "Adj Close",
+            "volume": "Volume",
+            "date": "Date",
+            "datetime": "Date",
+
+            "sma_20": "SMA_20",
+            "sma20": "SMA_20",
+            "sma_50": "SMA_50",
+            "sma50": "SMA_50",
+
+            "ema_20": "EMA_20",
+            "ema20": "EMA_20",
+            "ema_50": "EMA_50",
+            "ema50": "EMA_50",
+
+            "rsi": "RSI",
+
+            "macd": "MACD",
+            "macd_signal": "MACD_Signal",
+            "macd_hist": "MACD_Hist",
+
+            "atr": "ATR",
+            "momentum": "Momentum",
+
+            "vwap": "VWAP",
+            "supertrend": "Supertrend",
+
+            "bb_upper": "BB_Upper",
+            "bb_middle": "BB_Middle",
+            "bb_lower": "BB_Lower",
+
+            "volume_ratio": "Volume_Ratio",
+        }
+
+        if normalized in mapping:
+            rename_map[col] = mapping[normalized]
+
+    return result.rename(
+        columns=rename_map
+    )
+
+
+def prepare_datetime_index(df):
+
+    if df is None or df.empty:
+        return df
+
+    result = df.copy()
+
+    if not isinstance(
+        result.index,
+        pd.DatetimeIndex,
+    ):
+
+        if "Date" in result.columns:
+
+            result["Date"] = pd.to_datetime(
+                result["Date"],
+                errors="coerce",
+            )
+
+            result = result.dropna(
+                subset=["Date"]
+            )
+
+            result = result.set_index(
+                "Date"
+            )
+
+    try:
+        result = result.sort_index()
+    except Exception:
+        pass
 
     return result
 
 
-def prepare_datetime_index(
-    df: pd.DataFrame,
-) -> pd.DataFrame:
+def prepare_numeric_columns(df):
 
-    """Ensure dataframe has datetime index."""
-
-    result = df.copy()
-
-    date_columns = [
-        "Date",
-        "Datetime",
-        "Timestamp",
-        "date",
-        "datetime",
-        "timestamp",
-    ]
-
-    date_column = None
-
-    for column in date_columns:
-        if column in result.columns:
-            date_column = column
-            break
-
-    if date_column:
-
-        result[date_column] = pd.to_datetime(
-            result[date_column],
-            errors="coerce",
-        )
-
-        result = result.dropna(
-            subset=[date_column]
-        )
-
-        result = result.set_index(
-            date_column
-        )
-
-    else:
-
-        try:
-
-            result.index = pd.to_datetime(
-                result.index,
-                errors="coerce",
-            )
-
-            result = result[
-                ~result.index.isna()
-            ]
-
-        except Exception:
-            pass
-
-    return result.sort_index()
-
-
-def prepare_numeric_columns(
-    df: pd.DataFrame,
-) -> pd.DataFrame:
-
-    """Convert market and indicator columns to numeric."""
+    if df is None or df.empty:
+        return df
 
     result = df.copy()
 
-    columns = [
+    numeric_columns = [
         "Open",
         "High",
         "Low",
         "Close",
+        "Adj Close",
         "Volume",
+
         "SMA_20",
         "SMA_50",
         "EMA_20",
         "EMA_50",
+
         "RSI",
+
         "MACD",
         "MACD_Signal",
-        "MACD_Histogram",
+        "MACD_Hist",
+
+        "ATR",
+        "Momentum",
         "VWAP",
         "Supertrend",
-        "ATR",
+
         "BB_Upper",
         "BB_Middle",
         "BB_Lower",
-        "Momentum",
+
         "Volume_Ratio",
     ]
 
-    for column in columns:
+    for col in numeric_columns:
 
-        if column in result.columns:
+        if col in result.columns:
 
-            result[column] = pd.to_numeric(
-                result[column],
+            result[col] = pd.to_numeric(
+                result[col],
                 errors="coerce",
             )
 
     return result
 
 
-def calculate_heikin_ashi(
-    df: pd.DataFrame,
-) -> pd.DataFrame:
-
-    """Calculate Heikin Ashi candles."""
-
-    result = df.copy()
-
-    required = [
-        "Open",
-        "High",
-        "Low",
-        "Close",
-    ]
-
-    if not all(
-        column in result.columns
-        for column in required
-    ):
-        return result
-
-    result["HA_Close"] = (
-        result["Open"]
-        + result["High"]
-        + result["Low"]
-        + result["Close"]
-    ) / 4.0
-
-    ha_open = np.zeros(len(result))
-
-    if len(result) > 0:
-
-        ha_open[0] = (
-            result["Open"].iloc[0]
-            + result["Close"].iloc[0]
-        ) / 2.0
-
-        for i in range(1, len(result)):
-
-            ha_open[i] = (
-                ha_open[i - 1]
-                + result["HA_Close"].iloc[i - 1]
-            ) / 2.0
-
-    result["HA_Open"] = ha_open
-
-    result["HA_High"] = result[
-        [
-            "High",
-            "HA_Open",
-            "HA_Close",
-        ]
-    ].max(axis=1)
-
-    result["HA_Low"] = result[
-        [
-            "Low",
-            "HA_Open",
-            "HA_Close",
-        ]
-    ].min(axis=1)
-
-    return result
-
-
-def filter_period(
-    df: pd.DataFrame,
-    period: str,
-) -> pd.DataFrame:
-
-    if df.empty:
-        return df
-
-    if period == "All Data":
-        return df
-
-    days_map = {
-        "30 Days": 30,
-        "60 Days": 60,
-        "90 Days": 90,
-        "180 Days": 180,
-        "1 Year": 365,
-    }
-
-    days = days_map.get(period)
-
-    if days is None:
-        return df
-
-    latest = df.index.max()
-
-    start = latest - pd.Timedelta(
-        days=days
-    )
-
-    return df[
-        df.index >= start
-    ]
-
-
 def latest_value(
-    df: pd.DataFrame,
-    column: str,
+    df,
+    column,
+    default=np.nan,
 ):
 
-    if column not in df.columns:
-        return None
+    if (
+        df is None
+        or df.empty
+        or column not in df.columns
+    ):
+        return default
 
-    values = df[column].dropna()
+    series = pd.to_numeric(
+        df[column],
+        errors="coerce",
+    ).dropna()
 
-    if values.empty:
-        return None
+    if series.empty:
+        return default
 
-    try:
-        return float(values.iloc[-1])
-    except Exception:
-        return None
+    return float(series.iloc[-1])
 
 
 def previous_value(
-    df: pd.DataFrame,
-    column: str,
+    df,
+    column,
+    default=np.nan,
 ):
 
-    if column not in df.columns:
-        return None
+    if (
+        df is None
+        or df.empty
+        or column not in df.columns
+    ):
+        return default
 
-    values = df[column].dropna()
+    series = pd.to_numeric(
+        df[column],
+        errors="coerce",
+    ).dropna()
 
-    if len(values) < 2:
-        return None
+    if len(series) < 2:
+        return default
 
-    try:
-        return float(values.iloc[-2])
-    except Exception:
-        return None
+    return float(series.iloc[-2])
 
 
 def fmt(
@@ -525,29 +700,60 @@ def fmt(
         return f"{float(value):,.{decimals}f}"
 
     except Exception:
+
         return "N/A"
 
 
 def pct(
     value,
+    decimals=2,
 ):
 
     if value is None:
         return "N/A"
 
     try:
-        return f"{float(value):.2f}%"
+
+        if pd.isna(value):
+            return "N/A"
+
+        return f"{float(value):.{decimals}f}%"
+
     except Exception:
+
         return "N/A"
 
 
+def safe_divide(
+    a,
+    b,
+    default=0.0,
+):
+
+    try:
+
+        if (
+            b is None
+            or pd.isna(b)
+            or float(b) == 0
+        ):
+            return default
+
+        return float(a) / float(b)
+
+    except Exception:
+
+        return default
+
+
 # ============================================================
-# CANDLESTICK PATTERN
+# HEIKIN ASHI
 # ============================================================
 
-def detect_candlestick_pattern(
-    df: pd.DataFrame,
-):
+def calculate_heikin_ashi(df):
+
+    if df is None or df.empty:
+        return pd.DataFrame()
 
     required = [
         "Open",
@@ -556,188 +762,257 @@ def detect_candlestick_pattern(
         "Close",
     ]
 
-    if df.empty:
-        return {
-            "pattern": "No Pattern",
-            "bias": "Neutral",
-            "description": "No market data available.",
-        }
+    if not all(
+        col in df.columns
+        for col in required
+    ):
+        return df.copy()
+
+    result = df.copy()
+
+    ha = pd.DataFrame(
+        index=result.index
+    )
+
+    ha["Close"] = (
+        result["Open"]
+        + result["High"]
+        + result["Low"]
+        + result["Close"]
+    ) / 4
+
+    ha_open = np.zeros(
+        len(result)
+    )
+
+    if len(result) > 0:
+
+        ha_open[0] = (
+            result["Open"].iloc[0]
+            + result["Close"].iloc[0]
+        ) / 2
+
+    for i in range(1, len(result)):
+
+        ha_open[i] = (
+            ha_open[i - 1]
+            + ha["Close"].iloc[i - 1]
+        ) / 2
+
+    ha["Open"] = ha_open
+
+    ha["High"] = pd.concat(
+        [
+            result["High"],
+            ha["Open"],
+            ha["Close"],
+        ],
+        axis=1,
+    ).max(axis=1)
+
+    ha["Low"] = pd.concat(
+        [
+            result["Low"],
+            ha["Open"],
+            ha["Close"],
+        ],
+        axis=1,
+    ).min(axis=1)
+
+    return ha
+
+
+# ============================================================
+# PERIOD FILTER
+# ============================================================
+
+def filter_period(
+    df,
+    period,
+):
+
+    if df is None or df.empty:
+        return df
+
+    result = df.copy()
+
+    if not isinstance(
+        result.index,
+        pd.DatetimeIndex,
+    ):
+        return result
+
+    days_map = {
+        "30 Days": 30,
+        "60 Days": 60,
+        "90 Days": 90,
+        "180 Days": 180,
+        "1 Year": 365,
+        "2 Years": 730,
+    }
+
+    days = days_map.get(
+        period
+    )
+
+    if days is None:
+        return result
+
+    end_date = result.index.max()
+
+    start_date = (
+        end_date
+        - pd.Timedelta(
+            days=days
+        )
+    )
+
+    return result.loc[
+        result.index >= start_date
+    ]
+
+
+# ============================================================
+# CANDLESTICK PATTERN
+# ============================================================
+
+def detect_candlestick_pattern(df):
+
+    if df is None or len(df) < 2:
+        return "Neutral"
+
+    required = [
+        "Open",
+        "High",
+        "Low",
+        "Close",
+    ]
 
     if not all(
-        column in df.columns
-        for column in required
+        col in df.columns
+        for col in required
     ):
-        return {
-            "pattern": "Insufficient Data",
-            "bias": "Neutral",
-            "description": "OHLC data is required.",
-        }
+        return "Neutral"
 
-    if len(df) < 2:
-        return {
-            "pattern": "Insufficient Data",
-            "bias": "Neutral",
-            "description": "At least two candles are required.",
-        }
+    last = df.iloc[-1]
 
-    current = df.iloc[-1]
+    o = float(last["Open"])
+    h = float(last["High"])
+    l = float(last["Low"])
+    c = float(last["Close"])
+
+    body = abs(c - o)
+
+    candle_range = max(
+        h - l,
+        0.000001,
+    )
+
+    upper_wick = (
+        h - max(o, c)
+    )
+
+    lower_wick = (
+        min(o, c) - l
+    )
+
+    body_ratio = (
+        body / candle_range
+    )
+
+    # --------------------------------------------------------
+    # Previous candle
+    # --------------------------------------------------------
+
     previous = df.iloc[-2]
-
-    o = float(current["Open"])
-    h = float(current["High"])
-    l = float(current["Low"])
-    c = float(current["Close"])
 
     po = float(previous["Open"])
     pc = float(previous["Close"])
 
-    body = abs(c - o)
-    candle_range = max(h - l, 0.000001)
-
-    upper_wick = h - max(o, c)
-    lower_wick = min(o, c) - l
-
-    bullish = c > o
-    bearish = c < o
-
-    if body <= candle_range * 0.10:
-
-        return {
-            "pattern": "Doji",
-            "bias": "Neutral",
-            "description": (
-                "Open and close are very close, "
-                "indicating market indecision."
-            ),
-        }
+    # --------------------------------------------------------
+    # Engulfing patterns first
+    # --------------------------------------------------------
 
     if (
-        bullish
-        and pc < po
+        pc < po
+        and c > o
         and o <= pc
         and c >= po
     ):
 
-        return {
-            "pattern": "Bullish Engulfing",
-            "bias": "Bullish",
-            "description": (
-                "The current bullish candle engulfs "
-                "the previous bearish candle."
-            ),
-        }
+        return "Bullish Engulfing"
 
     if (
-        bearish
-        and pc > po
+        pc > po
+        and c < o
         and o >= pc
         and c <= po
     ):
 
-        return {
-            "pattern": "Bearish Engulfing",
-            "bias": "Bearish",
-            "description": (
-                "The current bearish candle engulfs "
-                "the previous bullish candle."
-            ),
-        }
+        return "Bearish Engulfing"
+
+    # --------------------------------------------------------
+    # Doji
+    # --------------------------------------------------------
+
+    if body_ratio <= 0.10:
+        return "Doji"
+
+    # --------------------------------------------------------
+    # Hammer
+    # --------------------------------------------------------
 
     if (
         lower_wick >= body * 2
         and upper_wick <= body
+        and c >= o
     ):
 
-        return {
-            "pattern": "Hammer",
-            "bias": "Bullish",
-            "description": (
-                "Long lower wick suggests rejection "
-                "of lower prices."
-            ),
-        }
+        return "Hammer"
+
+    # --------------------------------------------------------
+    # Inverted Hammer
+    # --------------------------------------------------------
 
     if (
         upper_wick >= body * 2
         and lower_wick <= body
+        and c >= o
     ):
 
-        return {
-            "pattern": "Shooting Star",
-            "bias": "Bearish",
-            "description": (
-                "Long upper wick suggests rejection "
-                "of higher prices."
-            ),
-        }
+        return "Inverted Hammer"
+
+    # --------------------------------------------------------
+    # Shooting Star
+    # --------------------------------------------------------
 
     if (
-        bullish
-        and body >= candle_range * 0.70
+        upper_wick >= body * 2
+        and lower_wick <= body
+        and c < o
     ):
 
-        return {
-            "pattern": "Strong Bullish Candle",
-            "bias": "Bullish",
-            "description": (
-                "Large bullish body indicates strong "
-                "buying pressure."
-            ),
-        }
+        return "Shooting Star"
 
-    if (
-        bearish
-        and body >= candle_range * 0.70
-    ):
+    if c > o:
+        return "Bullish Candle"
 
-        return {
-            "pattern": "Strong Bearish Candle",
-            "bias": "Bearish",
-            "description": (
-                "Large bearish body indicates strong "
-                "selling pressure."
-            ),
-        }
+    if c < o:
+        return "Bearish Candle"
 
-    return {
-        "pattern": "Normal Candle",
-        "bias": "Neutral",
-        "description": (
-            "No major classical candlestick pattern "
-            "was detected."
-        ),
-    }
+    return "Neutral"
 
 
 # ============================================================
-# PROFESSIONAL TECHNICAL RECOMMENDATION ENGINE
+# TECHNICAL SIGNAL ENGINE
 # ============================================================
 
 def calculate_technical_signal(
-    df: pd.DataFrame,
-    strategy_mode: str = "Intraday",
+    df,
+    timeframe,
 ):
 
-    if df.empty:
-
-        return {
-            "score": 50,
-            "signal": "HOLD",
-            "confidence": "Low",
-            "reasons": [],
-            "bullish_reasons": [],
-            "bearish_reasons": [],
-            "warnings": [],
-            "bullish_count": 0,
-            "bearish_count": 0,
-            "candlestick": {},
-        }
-
-    # --------------------------------------------------------
-    # Base score
-    # --------------------------------------------------------
-
-    score = 50.0
+    score = 50
 
     bullish_count = 0
     bearish_count = 0
@@ -746,46 +1021,93 @@ def calculate_technical_signal(
     bearish_reasons = []
     warnings = []
 
-    # --------------------------------------------------------
-    # Helpers
-    # --------------------------------------------------------
+    if df is None or df.empty:
 
-    def bullish(points, reason):
-        nonlocal score
-        score += points
-        bullish_reasons.append(reason)
+        return {
+            "score": 50,
+            "signal": "HOLD",
+            "confidence": "Low",
+            "bullish_count": 0,
+            "bearish_count": 0,
+            "factor_gap": 0,
+            "reasons": [
+                "Insufficient market data."
+            ],
+            "bullish_reasons": [],
+            "bearish_reasons": [],
+            "warnings": [
+                "Unable to calculate complete technical analysis."
+            ],
+            "candlestick": "Neutral",
+            "reason": "Insufficient data",
+            "action": "Wait for reliable market data.",
+            "confirmation": "Wait for additional confirmation.",
+        }
 
-    def bearish(points, reason):
-        nonlocal score
-        score -= points
-        bearish_reasons.append(reason)
+    close = latest_value(
+        df,
+        "Close",
+    )
 
-    # --------------------------------------------------------
-    # Values
-    # --------------------------------------------------------
+    sma20 = latest_value(
+        df,
+        "SMA_20",
+    )
 
-    close = latest_value(df, "Close")
+    sma50 = latest_value(
+        df,
+        "SMA_50",
+    )
 
-    sma20 = latest_value(df, "SMA_20")
-    sma50 = latest_value(df, "SMA_50")
+    ema20 = latest_value(
+        df,
+        "EMA_20",
+    )
 
-    ema20 = latest_value(df, "EMA_20")
-    ema50 = latest_value(df, "EMA_50")
+    ema50 = latest_value(
+        df,
+        "EMA_50",
+    )
 
-    vwap = latest_value(df, "VWAP")
-    supertrend = latest_value(df, "Supertrend")
+    vwap = latest_value(
+        df,
+        "VWAP",
+    )
 
-    rsi = latest_value(df, "RSI")
+    supertrend = latest_value(
+        df,
+        "Supertrend",
+    )
 
-    macd = latest_value(df, "MACD")
-    macd_signal = latest_value(df, "MACD_Signal")
-    macd_hist = latest_value(df, "MACD_Histogram")
+    rsi = latest_value(
+        df,
+        "RSI",
+    )
 
-    bb_middle = latest_value(df, "BB_Middle")
-    bb_upper = latest_value(df, "BB_Upper")
-    bb_lower = latest_value(df, "BB_Lower")
+    macd = latest_value(
+        df,
+        "MACD",
+    )
 
-    momentum = latest_value(df, "Momentum")
+    macd_signal = latest_value(
+        df,
+        "MACD_Signal",
+    )
+
+    macd_hist = latest_value(
+        df,
+        "MACD_Hist",
+    )
+
+    bb_middle = latest_value(
+        df,
+        "BB_Middle",
+    )
+
+    momentum = latest_value(
+        df,
+        "Momentum",
+    )
 
     volume_ratio = latest_value(
         df,
@@ -793,250 +1115,175 @@ def calculate_technical_signal(
     )
 
     # ========================================================
-    # STRATEGY WEIGHTS
+    # SMA 20
     # ========================================================
 
-    if strategy_mode == "Intraday":
-
-        weights = {
-            "price_sma": 6,
-            "ma_cross": 5,
-            "ema_cross": 5,
-            "vwap": 12,
-            "supertrend": 12,
-            "rsi": 7,
-            "macd": 9,
-            "bb": 3,
-            "momentum": 5,
-            "volume": 8,
-            "candle": 4,
-        }
-
-    elif strategy_mode == "Swing":
-
-        weights = {
-            "price_sma": 8,
-            "ma_cross": 10,
-            "ema_cross": 8,
-            "vwap": 4,
-            "supertrend": 9,
-            "rsi": 7,
-            "macd": 9,
-            "bb": 4,
-            "momentum": 7,
-            "volume": 5,
-            "candle": 4,
-        }
-
-    else:
-
-        weights = {
-            "price_sma": 10,
-            "ma_cross": 13,
-            "ema_cross": 11,
-            "vwap": 1,
-            "supertrend": 8,
-            "rsi": 5,
-            "macd": 8,
-            "bb": 3,
-            "momentum": 8,
-            "volume": 3,
-            "candle": 2,
-        }
-
-    # ========================================================
-    # PRICE VS SMA 20
-    # ========================================================
-
-    if close is not None and sma20 is not None:
+    if not pd.isna(sma20):
 
         if close > sma20:
 
-            bullish(
-                weights["price_sma"],
-                "Price is above SMA 20, supporting short-term strength.",
-            )
-
+            score += 8
             bullish_count += 1
 
-        else:
-
-            bearish(
-                weights["price_sma"],
-                "Price is below SMA 20, indicating short-term weakness.",
+            bullish_reasons.append(
+                "Price is above SMA 20, indicating short-term upward trend."
             )
 
+        elif close < sma20:
+
+            score -= 8
             bearish_count += 1
+
+            bearish_reasons.append(
+                "Price is below SMA 20, indicating short-term weakness."
+            )
 
     # ========================================================
     # SMA 20 / SMA 50
     # ========================================================
 
     if (
-        sma20 is not None
-        and sma50 is not None
+        not pd.isna(sma20)
+        and not pd.isna(sma50)
     ):
 
         if sma20 > sma50:
 
-            bullish(
-                weights["ma_cross"],
-                "SMA 20 is above SMA 50, supporting a bullish trend.",
-            )
-
+            score += 10
             bullish_count += 1
 
-        else:
-
-            bearish(
-                weights["ma_cross"],
-                "SMA 20 is below SMA 50, indicating a weaker trend.",
+            bullish_reasons.append(
+                "SMA 20 is above SMA 50, supporting a bullish trend."
             )
 
+        elif sma20 < sma50:
+
+            score -= 10
             bearish_count += 1
+
+            bearish_reasons.append(
+                "SMA 20 is below SMA 50, indicating bearish trend structure."
+            )
 
     # ========================================================
     # EMA 20 / EMA 50
     # ========================================================
 
     if (
-        ema20 is not None
-        and ema50 is not None
+        not pd.isna(ema20)
+        and not pd.isna(ema50)
     ):
 
         if ema20 > ema50:
 
-            bullish(
-                weights["ema_cross"],
-                "EMA 20 is above EMA 50, supporting positive momentum.",
-            )
-
+            score += 8
             bullish_count += 1
 
-        else:
-
-            bearish(
-                weights["ema_cross"],
-                "EMA 20 is below EMA 50, indicating negative momentum.",
+            bullish_reasons.append(
+                "EMA 20 is above EMA 50, supporting positive momentum."
             )
 
+        elif ema20 < ema50:
+
+            score -= 8
             bearish_count += 1
+
+            bearish_reasons.append(
+                "EMA 20 is below EMA 50, indicating negative momentum."
+            )
 
     # ========================================================
     # VWAP
     # ========================================================
 
-    if (
-        close is not None
-        and vwap is not None
-    ):
+    if not pd.isna(vwap):
 
         if close > vwap:
 
-            bullish(
-                weights["vwap"],
-                "Price is above VWAP, indicating buyer control.",
-            )
-
+            score += 8
             bullish_count += 1
 
-        else:
-
-            bearish(
-                weights["vwap"],
-                "Price is below VWAP, indicating seller control.",
+            bullish_reasons.append(
+                "Price is above VWAP, indicating bullish positioning."
             )
 
+        elif close < vwap:
+
+            score -= 8
             bearish_count += 1
+
+            bearish_reasons.append(
+                "Price is below VWAP, indicating bearish positioning."
+            )
+
+    elif timeframe == "Intraday":
+
+        warnings.append(
+            "VWAP data is unavailable for intraday confirmation."
+        )
 
     # ========================================================
     # SUPERTREND
     # ========================================================
 
-    if (
-        close is not None
-        and supertrend is not None
-    ):
+    if not pd.isna(supertrend):
 
         if close > supertrend:
 
-            bullish(
-                weights["supertrend"],
-                "Price is above Supertrend, confirming an upward trend.",
-            )
-
+            score += 10
             bullish_count += 1
 
-        else:
-
-            bearish(
-                weights["supertrend"],
-                "Price is below Supertrend, confirming downward pressure.",
+            bullish_reasons.append(
+                "Price is above Supertrend, indicating bullish trend direction."
             )
 
+        elif close < supertrend:
+
+            score -= 10
             bearish_count += 1
+
+            bearish_reasons.append(
+                "Price is below Supertrend, indicating bearish trend direction."
+            )
 
     # ========================================================
     # RSI
     # ========================================================
 
-    if rsi is not None:
+    if not pd.isna(rsi):
 
-        if 50 <= rsi < 65:
+        if 50 <= rsi < 70:
 
-            bullish(
-                weights["rsi"],
-                f"RSI is {rsi:.1f}, showing healthy bullish momentum.",
-            )
-
+            score += 7
             bullish_count += 1
 
-        elif 65 <= rsi < 70:
-
-            bullish(
-                weights["rsi"] * 0.5,
-                f"RSI is {rsi:.1f}, showing strong momentum but approaching overbought.",
-            )
-
-            bullish_count += 1
-
-            warnings.append(
-                "RSI is approaching the overbought zone."
+            bullish_reasons.append(
+                f"RSI at {rsi:.1f} supports positive momentum without being overbought."
             )
 
         elif rsi >= 70:
 
-            bearish(
-                weights["rsi"] * 0.5,
-                f"RSI is {rsi:.1f}, indicating an overbought condition.",
-            )
-
-            bearish_count += 1
+            score -= 4
 
             warnings.append(
-                "Avoid chasing an already overbought move."
+                f"RSI at {rsi:.1f} is overbought. Avoid chasing extended price."
             )
 
-        elif 30 < rsi < 50:
+        elif rsi < 30:
 
-            bearish(
-                weights["rsi"] * 0.6,
-                f"RSI is {rsi:.1f}, indicating weaker momentum.",
-            )
-
-            bearish_count += 1
-
-        else:
-
-            bullish(
-                weights["rsi"] * 0.5,
-                f"RSI is {rsi:.1f}, indicating an oversold condition that may support a reversal.",
-            )
-
-            bullish_count += 1
+            score += 4
 
             warnings.append(
-                "RSI is oversold; wait for price confirmation before entering."
+                f"RSI at {rsi:.1f} is oversold. Reversal confirmation is required."
+            )
+
+        elif 30 <= rsi < 50:
+
+            score -= 4
+            bearish_count += 1
+
+            bearish_reasons.append(
+                f"RSI at {rsi:.1f} is below 50, showing weak momentum."
             )
 
     # ========================================================
@@ -1044,212 +1291,236 @@ def calculate_technical_signal(
     # ========================================================
 
     if (
-        macd is not None
-        and macd_signal is not None
+        not pd.isna(macd)
+        and not pd.isna(macd_signal)
     ):
 
         if macd > macd_signal:
 
-            bullish(
-                weights["macd"],
-                "MACD is above its signal line, supporting bullish momentum.",
-            )
-
+            score += 8
             bullish_count += 1
 
-        else:
-
-            bearish(
-                weights["macd"],
-                "MACD is below its signal line, indicating bearish momentum.",
+            bullish_reasons.append(
+                "MACD is above its signal line, supporting bullish momentum."
             )
 
+        elif macd < macd_signal:
+
+            score -= 8
             bearish_count += 1
 
-    if macd_hist is not None:
+            bearish_reasons.append(
+                "MACD is below its signal line, indicating weakening momentum."
+            )
+
+    if not pd.isna(macd_hist):
 
         if macd_hist > 0:
 
-            bullish(
-                weights["macd"] * 0.35,
-                "MACD histogram is positive.",
+            score += 4
+            bullish_count += 1
+
+            bullish_reasons.append(
+                "MACD histogram is positive."
             )
 
-        else:
+        elif macd_hist < 0:
 
-            bearish(
-                weights["macd"] * 0.35,
-                "MACD histogram is negative.",
+            score -= 4
+            bearish_count += 1
+
+            bearish_reasons.append(
+                "MACD histogram is negative."
             )
 
     # ========================================================
-    # BOLLINGER BANDS
+    # BOLLINGER
     # ========================================================
 
-    if (
-        close is not None
-        and bb_middle is not None
-    ):
+    if not pd.isna(bb_middle):
 
         if close > bb_middle:
 
-            bullish(
-                weights["bb"],
-                "Price is above the Bollinger middle band.",
-            )
-
+            score += 5
             bullish_count += 1
 
-        else:
-
-            bearish(
-                weights["bb"],
-                "Price is below the Bollinger middle band.",
+            bullish_reasons.append(
+                "Price is above Bollinger middle band."
             )
 
+        elif close < bb_middle:
+
+            score -= 5
             bearish_count += 1
 
-    if (
-        close is not None
-        and bb_upper is not None
-        and close >= bb_upper
-    ):
-
-        warnings.append(
-            "Price is near/above the upper Bollinger Band; breakout confirmation is preferable to chasing."
-        )
-
-    if (
-        close is not None
-        and bb_lower is not None
-        and close <= bb_lower
-    ):
-
-        warnings.append(
-            "Price is near/below the lower Bollinger Band; reversal confirmation is required."
-        )
+            bearish_reasons.append(
+                "Price is below Bollinger middle band."
+            )
 
     # ========================================================
     # MOMENTUM
     # ========================================================
 
-    if momentum is not None:
+    if not pd.isna(momentum):
 
         if momentum > 0:
 
-            bullish(
-                weights["momentum"],
-                "Momentum is positive.",
-            )
-
+            score += 5
             bullish_count += 1
 
-        else:
-
-            bearish(
-                weights["momentum"],
-                "Momentum is negative.",
+            bullish_reasons.append(
+                "Momentum is positive."
             )
 
+        elif momentum < 0:
+
+            score -= 5
             bearish_count += 1
+
+            bearish_reasons.append(
+                "Momentum is negative."
+            )
 
     # ========================================================
     # VOLUME
     # ========================================================
 
-    if volume_ratio is not None:
+    if not pd.isna(volume_ratio):
 
         if volume_ratio >= 1.5:
 
-            if bullish_count > bearish_count:
+            previous_close = previous_value(
+                df,
+                "Close",
+                close,
+            )
 
-                bullish(
-                    weights["volume"],
-                    f"Volume is elevated at {volume_ratio:.2f}x reference volume and supports the bullish move.",
-                )
+            if close >= previous_close:
 
+                score += 5
                 bullish_count += 1
 
-            elif bearish_count > bullish_count:
-
-                bearish(
-                    weights["volume"],
-                    f"High volume at {volume_ratio:.2f}x is accompanying bearish pressure.",
+                bullish_reasons.append(
+                    f"Volume is {volume_ratio:.2f}x average with positive price action."
                 )
-
-                bearish_count += 1
 
             else:
 
-                warnings.append(
-                    f"Volume is elevated at {volume_ratio:.2f}x, but directional confirmation is mixed."
+                score -= 5
+                bearish_count += 1
+
+                bearish_reasons.append(
+                    f"High volume of {volume_ratio:.2f}x average accompanies price weakness."
                 )
 
-        elif volume_ratio < 0.75:
+        elif volume_ratio < 1:
 
             warnings.append(
-                "Volume is below normal; breakouts may require additional confirmation."
+                f"Volume is only {volume_ratio:.2f}x average; confirmation is weak."
             )
 
     # ========================================================
     # CANDLESTICK
     # ========================================================
 
-    candle = detect_candlestick_pattern(df)
-
-    if candle["bias"] == "Bullish":
-
-        bullish(
-            weights["candle"],
-            f"Candlestick pattern is bullish: {candle['pattern']}.",
-        )
-
-        bullish_count += 1
-
-    elif candle["bias"] == "Bearish":
-
-        bearish(
-            weights["candle"],
-            f"Candlestick pattern is bearish: {candle['pattern']}.",
-        )
-
-        bearish_count += 1
-
-    # ========================================================
-    # ALIGNMENT CHECK
-    # ========================================================
-
-    factor_difference = (
-        bullish_count - bearish_count
+    candlestick = detect_candlestick_pattern(
+        df
     )
 
-    if (
-        bullish_count > 0
-        and bearish_count > 0
-        and abs(factor_difference) <= 1
-    ):
+    bullish_patterns = [
+        "Bullish Engulfing",
+        "Hammer",
+        "Inverted Hammer",
+        "Bullish Candle",
+    ]
 
-        warnings.append(
-            "Technical indicators are closely mixed. Wait for confirmation rather than entering aggressively."
+    bearish_patterns = [
+        "Bearish Engulfing",
+        "Shooting Star",
+        "Bearish Candle",
+    ]
+
+    if candlestick in bullish_patterns:
+
+        score += 3
+        bullish_count += 1
+
+        bullish_reasons.append(
+            f"Latest candlestick pattern is {candlestick}."
         )
 
-        # Make mixed setups more conservative.
-        if score > 70:
-            score -= 5
+    elif candlestick in bearish_patterns:
 
-        elif score < 30:
-            score += 5
+        score -= 3
+        bearish_count += 1
+
+        bearish_reasons.append(
+            f"Latest candlestick pattern is {candlestick}."
+        )
+
+    elif candlestick == "Doji":
+
+        warnings.append(
+            "Latest candle is a Doji, indicating indecision."
+        )
 
     # ========================================================
-    # SCORE NORMALIZATION
+    # TIMEFRAME CONFIRMATION
     # ========================================================
 
-    score = max(
-        0,
-        min(
-            100,
+    if timeframe == "Intraday":
+
+        if pd.isna(vwap):
+
+            warnings.append(
+                "Intraday VWAP confirmation is unavailable."
+            )
+
+        if pd.isna(volume_ratio):
+
+            warnings.append(
+                "Intraday volume confirmation is unavailable."
+            )
+
+    elif timeframe == "Swing":
+
+        if pd.isna(sma50):
+
+            warnings.append(
+                "SMA 50 is unavailable for swing confirmation."
+            )
+
+    elif timeframe == "Long Term":
+
+        if not pd.isna(sma50):
+
+            if close > sma50:
+
+                bullish_reasons.append(
+                    "Price is above SMA 50, supporting the longer-term trend."
+                )
+
+            elif close < sma50:
+
+                bearish_reasons.append(
+                    "Price is below SMA 50, indicating longer-term weakness."
+                )
+
+    # ========================================================
+    # SCORE
+    # ========================================================
+
+    score = int(
+        np.clip(
             score,
-        ),
+            0,
+            100,
+        )
+    )
+
+    factor_gap = (
+        bullish_count
+        - bearish_count
     )
 
     # ========================================================
@@ -1257,29 +1528,29 @@ def calculate_technical_signal(
     # ========================================================
 
     if (
-        score >= 78
-        and bullish_count >= bearish_count + 2
+        score >= 75
+        and factor_gap >= 2
     ):
 
         signal = "STRONG BUY"
 
     elif (
         score >= 60
-        and bullish_count > bearish_count
+        and factor_gap >= 1
     ):
 
         signal = "BUY"
 
     elif (
-        score <= 22
-        and bearish_count >= bullish_count + 2
+        score <= 25
+        and factor_gap <= -2
     ):
 
         signal = "STRONG SELL"
 
     elif (
         score < 45
-        and bearish_count > bullish_count
+        and factor_gap <= -1
     ):
 
         signal = "SELL"
@@ -1292,26 +1563,24 @@ def calculate_technical_signal(
     # CONFIDENCE
     # ========================================================
 
-    factor_gap = abs(
-        bullish_count - bearish_count
-    )
-
     if (
-        signal in ["STRONG BUY", "STRONG SELL"]
-        and factor_gap >= 4
-        and (score >= 80 or score <= 20)
-    ):
-
-        confidence = "Very High"
-
-    elif (
-        signal in ["STRONG BUY", "STRONG SELL", "BUY", "SELL"]
-        and factor_gap >= 3
+        score >= 80
+        and abs(factor_gap) >= 3
     ):
 
         confidence = "High"
 
-    elif factor_gap >= 2:
+    elif (
+        score >= 70
+        and abs(factor_gap) >= 2
+    ):
+
+        confidence = "Moderate-High"
+
+    elif (
+        score >= 55
+        and abs(factor_gap) >= 1
+    ):
 
         confidence = "Moderate"
 
@@ -1319,10 +1588,94 @@ def calculate_technical_signal(
 
         confidence = "Low"
 
+    # ========================================================
+    # REASON / ACTION
+    # ========================================================
+
+    if signal == "STRONG BUY":
+
+        reason = (
+            "Multiple technical indicators are aligned bullishly "
+            "with strong confirmation."
+        )
+
+        action = (
+            "Wait for the entry trigger and confirmation before buying. "
+            "Avoid chasing a large breakout candle."
+        )
+
+        confirmation = (
+            "Prefer price above VWAP/Supertrend with positive momentum "
+            "and volume confirmation."
+        )
+
+    elif signal == "BUY":
+
+        reason = (
+            "The majority of technical factors support a bullish setup."
+        )
+
+        action = (
+            "Consider buying after the entry trigger is confirmed."
+        )
+
+        confirmation = (
+            "Confirm trend, momentum and volume before entry."
+        )
+
+    elif signal == "STRONG SELL":
+
+        reason = (
+            "Multiple technical indicators are aligned bearishly "
+            "with strong downside confirmation."
+        )
+
+        action = (
+            "Avoid fresh long positions and consider selling/shorting "
+            "only after the sell trigger confirms."
+        )
+
+        confirmation = (
+            "Prefer price below VWAP/Supertrend with negative momentum "
+            "and volume confirmation."
+        )
+
+    elif signal == "SELL":
+
+        reason = (
+            "The majority of technical factors indicate weakness."
+        )
+
+        action = (
+            "Avoid fresh buying and consider reducing exposure "
+            "after confirmation."
+        )
+
+        confirmation = (
+            "Confirm bearish trend and momentum before selling."
+        )
+
+    else:
+
+        reason = (
+            "Bullish and bearish technical factors are not sufficiently aligned."
+        )
+
+        action = (
+            "Wait for stronger confirmation rather than forcing a trade."
+        )
+
+        confirmation = (
+            "Wait for trend, momentum and volume to align."
+        )
+
     return {
-        "score": round(score, 1),
+        "score": score,
         "signal": signal,
         "confidence": confidence,
+        "bullish_count": bullish_count,
+        "bearish_count": bearish_count,
+        "factor_gap": factor_gap,
         "reasons": (
             bullish_reasons
             + bearish_reasons
@@ -1330,69 +1683,11 @@ def calculate_technical_signal(
         "bullish_reasons": bullish_reasons,
         "bearish_reasons": bearish_reasons,
         "warnings": warnings,
-        "bullish_count": bullish_count,
-        "bearish_count": bearish_count,
-        "candlestick": candle,
-        "strategy_mode": strategy_mode,
+        "candlestick": candlestick,
+        "reason": reason,
+        "action": action,
+        "confirmation": confirmation,
     }
-
-
-# ============================================================
-# RECOMMENDATION ACTION
-# ============================================================
-
-def get_recommendation_action(
-    signal_data: dict,
-    strategy_mode: str,
-):
-
-    signal = signal_data.get(
-        "signal",
-        "HOLD",
-    )
-
-    if signal == "STRONG BUY":
-
-        return (
-            "Consider a long/buy setup only after the entry "
-            "trigger is confirmed. Avoid chasing a large price "
-            "extension."
-        )
-
-    if signal == "BUY":
-
-        return (
-            "Prefer buying near the calculated entry zone or "
-            "after the trigger is confirmed with price and volume."
-        )
-
-    if signal == "SELL":
-
-        if strategy_mode == "Intraday":
-
-            return (
-                "Avoid fresh long entries. Existing positions "
-                "should be reviewed for risk. Short trades require "
-                "confirmation below the trigger."
-            )
-
-        return (
-            "Avoid fresh long entries until the technical structure "
-            "improves. Existing positions should be reviewed for risk."
-        )
-
-    if signal == "STRONG SELL":
-
-        return (
-            "Avoid fresh long entries. Existing positions should "
-            "consider risk-control/exit levels. Short setups require "
-            "confirmation rather than chasing the fall."
-        )
-
-    return (
-        "Wait for stronger confirmation. The current indicators "
-        "do not provide a sufficiently clear directional edge."
-    )
 
 
 # ============================================================
@@ -1400,9 +1695,9 @@ def get_recommendation_action(
 # ============================================================
 
 def calculate_trade_plan(
-    df: pd.DataFrame,
-    timeframe: str,
-    signal_data: dict,
+    df,
+    timeframe,
+    signal_data,
 ):
 
     close = latest_value(
@@ -1415,147 +1710,132 @@ def calculate_trade_plan(
         "ATR",
     )
 
-    if close is None:
-        return None
+    if pd.isna(close):
 
-    if (
-        atr is None
-        or atr <= 0
-    ):
+        return {
+            "direction": "WAIT",
+            "entry": np.nan,
+            "zone_low": np.nan,
+            "zone_high": np.nan,
+            "stop_loss": np.nan,
+            "target1": np.nan,
+            "target2": np.nan,
+            "risk": np.nan,
+            "rr": 0,
+            "atr": np.nan,
+            "timeframe": timeframe,
+            "signal": signal_data.get(
+                "signal",
+                "HOLD",
+            ),
+        }
 
-        fallback = {
+    if pd.isna(atr) or atr <= 0:
+
+        fallback_map = {
             "Intraday": 0.01,
             "Swing": 0.03,
             "Long Term": 0.06,
         }
 
-        atr = close * fallback.get(
-            timeframe,
-            0.03,
+        atr = (
+            close
+            * fallback_map.get(
+                timeframe,
+                0.02,
+            )
         )
-
-    settings = {
-
-        "Intraday": {
-            "stop_atr": 1.0,
-            "target1_rr": 1.5,
-            "target2_rr": 2.0,
-            "trigger_atr": 0.20,
-        },
-
-        "Swing": {
-            "stop_atr": 1.5,
-            "target1_rr": 2.0,
-            "target2_rr": 3.0,
-            "trigger_atr": 0.30,
-        },
-
-        "Long Term": {
-            "stop_atr": 2.5,
-            "target1_rr": 2.0,
-            "target2_rr": 3.5,
-            "trigger_atr": 0.50,
-        },
-    }
-
-    cfg = settings.get(
-        timeframe,
-        settings["Swing"],
-    )
 
     signal = signal_data.get(
         "signal",
         "HOLD",
     )
 
-    # ========================================================
-    # LONG
-    # ========================================================
+    if timeframe == "Intraday":
+
+        stop_atr = 1.0
+        target1_rr = 1.5
+        target2_rr = 2.0
+        trigger_atr = 0.20
+
+    elif timeframe == "Swing":
+
+        stop_atr = 1.5
+        target1_rr = 2.0
+        target2_rr = 3.0
+        trigger_atr = 0.30
+
+    else:
+
+        stop_atr = 2.5
+        target1_rr = 2.0
+        target2_rr = 3.5
+        trigger_atr = 0.50
 
     if signal in [
-        "STRONG BUY",
         "BUY",
+        "STRONG BUY",
     ]:
 
         entry = (
             close
-            + atr * cfg["trigger_atr"]
+            + atr * trigger_atr
         )
 
-        buy_zone_low = max(
-            0,
-            close - atr * 0.25,
+        zone_low = (
+            close
+            - atr * 0.25
         )
 
-        buy_zone_high = (
-            close + atr * 0.10
+        zone_high = (
+            close
+            + atr * 0.10
         )
 
         risk = (
-            atr * cfg["stop_atr"]
+            atr * stop_atr
         )
 
-        stop_loss = max(
-            0,
-            entry - risk,
+        stop_loss = (
+            entry - risk
         )
 
         target1 = (
             entry
-            + risk * cfg["target1_rr"]
+            + risk * target1_rr
         )
 
         target2 = (
             entry
-            + risk * cfg["target2_rr"]
+            + risk * target2_rr
         )
 
-        return {
-            "direction": "LONG",
-            "entry": entry,
-            "buy_zone_low": buy_zone_low,
-            "buy_zone_high": buy_zone_high,
-            "stop_loss": stop_loss,
-            "target1": target1,
-            "target2": target2,
-            "risk": risk,
-            "reward1": target1 - entry,
-            "reward2": target2 - entry,
-            "entry_condition": (
-                f"Consider entry only if price sustains above "
-                f"₹{entry:.2f} and bullish confirmation remains intact."
-            ),
-            "exit_condition": (
-                f"Exit/review the position if price closes below "
-                f"approximately ₹{stop_loss:.2f} or bullish structure breaks."
-            ),
-        }
+        rr = target2_rr
 
-    # ========================================================
-    # SHORT
-    # ========================================================
+        direction = "BUY"
 
-    if signal in [
-        "STRONG SELL",
+    elif signal in [
         "SELL",
+        "STRONG SELL",
     ]:
 
         entry = (
             close
-            - atr * cfg["trigger_atr"]
+            - atr * trigger_atr
         )
 
-        sell_zone_low = max(
-            0,
-            close - atr * 0.10,
+        zone_low = (
+            close
+            - atr * 0.10
         )
 
-        sell_zone_high = (
-            close + atr * 0.25
+        zone_high = (
+            close
+            + atr * 0.25
         )
 
         risk = (
-            atr * cfg["stop_atr"]
+            atr * stop_atr
         )
 
         stop_loss = (
@@ -1564,58 +1844,590 @@ def calculate_trade_plan(
 
         target1 = (
             entry
-            - risk * cfg["target1_rr"]
+            - risk * target1_rr
         )
 
         target2 = (
             entry
-            - risk * cfg["target2_rr"]
+            - risk * target2_rr
         )
 
-        return {
-            "direction": "SHORT",
-            "entry": entry,
-            "buy_zone_low": sell_zone_low,
-            "buy_zone_high": sell_zone_high,
-            "stop_loss": stop_loss,
-            "target1": target1,
-            "target2": target2,
-            "risk": risk,
-            "reward1": entry - target1,
-            "reward2": entry - target2,
-            "entry_condition": (
-                f"Consider short/exit confirmation only if price "
-                f"sustains below ₹{entry:.2f} and bearish confirmation remains intact."
-            ),
-            "exit_condition": (
-                f"Exit short if price moves above approximately "
-                f"₹{stop_loss:.2f} or bearish structure breaks."
-            ),
-        }
+        rr = target2_rr
 
-    # ========================================================
-    # HOLD
-    # ========================================================
+        direction = "SELL"
+
+    else:
+
+        entry = close
+        zone_low = close * 0.99
+        zone_high = close * 1.01
+        stop_loss = close
+        target1 = close
+        target2 = close
+        risk = 0
+        rr = 0
+        direction = "WAIT"
 
     return {
-        "direction": "WAIT",
-        "entry": close,
-        "buy_zone_low": close * 0.99,
-        "buy_zone_high": close * 1.01,
-        "stop_loss": close,
-        "target1": close,
-        "target2": close,
-        "risk": 0,
-        "reward1": 0,
-        "reward2": 0,
-        "entry_condition": (
-            "Wait for stronger confirmation before taking "
-            "a directional position."
-        ),
-        "exit_condition": (
-            "Avoid chasing price while indicators remain mixed."
-        ),
+        "direction": direction,
+        "entry": entry,
+        "zone_low": zone_low,
+        "zone_high": zone_high,
+        "stop_loss": stop_loss,
+        "target1": target1,
+        "target2": target2,
+        "risk": risk,
+        "rr": rr,
+        "atr": atr,
+        "timeframe": timeframe,
+        "signal": signal,
     }
+
+
+# ============================================================
+# RESPONSIVE INDICATOR CHIPS
+# ============================================================
+
+def show_indicator_chips(
+    selected,
+):
+
+    if not selected:
+
+        st.info(
+            "No indicators selected. "
+            "Choose indicators above to display them on the chart."
+        )
+
+        return
+
+    chips = ""
+
+    for indicator in selected:
+
+        chips += f"""
+        <span
+            class="indicator-chip"
+            title="{indicator}"
+        >
+            {indicator}
+        </span>
+        """
+
+    html = f"""
+    <div class="indicator-chip-wrapper">
+        <div class="indicator-chip-container">
+
+            {chips}
+
+            <span class="indicator-count">
+                {len(selected)} selected
+            </span>
+
+        </div>
+    </div>
+    """
+
+    st.markdown(
+        html,
+        unsafe_allow_html=True,
+    )
+
+
+# ============================================================
+# PROFESSIONAL INDICATOR SELECTOR
+# ============================================================
+
+def show_indicator_selector():
+
+    current = st.session_state.get(
+        "technical_selected_indicators",
+        DEFAULT_INDICATORS.copy(),
+    )
+
+    st.markdown(
+        "### 📌 Technical Indicators"
+    )
+
+    st.caption(
+        "Select the indicators you want to display on the price chart "
+        "and use for technical interpretation."
+    )
+
+    selected = st.multiselect(
+        "Select indicators",
+        options=ALL_INDICATORS,
+        default=[
+            x for x in current
+            if x in ALL_INDICATORS
+        ],
+        placeholder="Search and select indicators...",
+        help=(
+            "Select multiple indicators. "
+            "Overlay indicators appear on the price chart. "
+            "Panel indicators appear in their respective analysis sections."
+        ),
+        key="technical_indicator_select",
+        label_visibility="collapsed",
+    )
+
+    st.session_state.technical_selected_indicators = selected
+
+    # --------------------------------------------------------
+    # Quick selection buttons
+    # --------------------------------------------------------
+
+    q1, q2, q3, q4 = st.columns(4)
+
+    with q1:
+
+        if st.button(
+            "📈 Trend",
+            use_container_width=True,
+            key="select_trend_indicators",
+        ):
+
+            st.session_state.technical_selected_indicators = (
+                TREND_INDICATORS.copy()
+            )
+
+            st.rerun()
+
+    with q2:
+
+        if st.button(
+            "🚀 Momentum",
+            use_container_width=True,
+            key="select_momentum_indicators",
+        ):
+
+            st.session_state.technical_selected_indicators = (
+                MOMENTUM_INDICATORS.copy()
+            )
+
+            st.rerun()
+
+    with q3:
+
+        if st.button(
+            "⚡ Volatility",
+            use_container_width=True,
+            key="select_volatility_indicators",
+        ):
+
+            st.session_state.technical_selected_indicators = (
+                VOLATILITY_INDICATORS.copy()
+            )
+
+            st.rerun()
+
+    with q4:
+
+        if st.button(
+            "⭐ Recommended",
+            use_container_width=True,
+            key="select_recommended_indicators",
+        ):
+
+            st.session_state.technical_selected_indicators = (
+                DEFAULT_INDICATORS.copy()
+            )
+
+            st.rerun()
+
+    # --------------------------------------------------------
+    # Compact selected indicator display
+    # --------------------------------------------------------
+
+    st.markdown(
+        "#### Selected"
+    )
+
+    show_indicator_chips(
+        st.session_state.technical_selected_indicators
+    )
+
+    return st.session_state.technical_selected_indicators
+
+
+# ============================================================
+# OVERLAY INDICATORS
+# ============================================================
+
+def add_selected_overlays(
+    fig,
+    df,
+    selected_indicators,
+):
+
+    if df is None or df.empty:
+        return fig
+
+    if (
+        "SMA 20" in selected_indicators
+        and "SMA_20" in df.columns
+    ):
+
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df["SMA_20"],
+                mode="lines",
+                name="SMA 20",
+            )
+        )
+
+    if (
+        "SMA 50" in selected_indicators
+        and "SMA_50" in df.columns
+    ):
+
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df["SMA_50"],
+                mode="lines",
+                name="SMA 50",
+            )
+        )
+
+    if (
+        "EMA 20" in selected_indicators
+        and "EMA_20" in df.columns
+    ):
+
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df["EMA_20"],
+                mode="lines",
+                name="EMA 20",
+            )
+        )
+
+    if (
+        "EMA 50" in selected_indicators
+        and "EMA_50" in df.columns
+    ):
+
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df["EMA_50"],
+                mode="lines",
+                name="EMA 50",
+            )
+        )
+
+    if "Bollinger Bands" in selected_indicators:
+
+        if all(
+            col in df.columns
+            for col in [
+                "BB_Upper",
+                "BB_Middle",
+                "BB_Lower",
+            ]
+        ):
+
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=df["BB_Upper"],
+                    mode="lines",
+                    name="BB Upper",
+                )
+            )
+
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=df["BB_Middle"],
+                    mode="lines",
+                    name="BB Middle",
+                )
+            )
+
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=df["BB_Lower"],
+                    mode="lines",
+                    name="BB Lower",
+                )
+            )
+
+    if (
+        "VWAP" in selected_indicators
+        and "VWAP" in df.columns
+    ):
+
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df["VWAP"],
+                mode="lines",
+                name="VWAP",
+            )
+        )
+
+    if (
+        "Supertrend" in selected_indicators
+        and "Supertrend" in df.columns
+    ):
+
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df["Supertrend"],
+                mode="lines",
+                name="Supertrend",
+            )
+        )
+
+    return fig
+
+
+# ============================================================
+# PRICE CHART
+# ============================================================
+
+def create_price_chart(
+    df,
+    graph_type,
+    selected_indicators,
+):
+
+    if df is None or df.empty:
+        return None
+
+    chart_df = df.copy()
+
+    fig = go.Figure()
+
+    if graph_type == "Candlestick":
+
+        if all(
+            col in chart_df.columns
+            for col in [
+                "Open",
+                "High",
+                "Low",
+                "Close",
+            ]
+        ):
+
+            fig.add_trace(
+                go.Candlestick(
+                    x=chart_df.index,
+                    open=chart_df["Open"],
+                    high=chart_df["High"],
+                    low=chart_df["Low"],
+                    close=chart_df["Close"],
+                    name="Candlestick",
+                )
+            )
+
+    elif graph_type == "Heikin Ashi":
+
+        ha = calculate_heikin_ashi(
+            chart_df
+        )
+
+        if not ha.empty:
+
+            fig.add_trace(
+                go.Candlestick(
+                    x=ha.index,
+                    open=ha["Open"],
+                    high=ha["High"],
+                    low=ha["Low"],
+                    close=ha["Close"],
+                    name="Heikin Ashi",
+                )
+            )
+
+    elif graph_type == "OHLC":
+
+        if all(
+            col in chart_df.columns
+            for col in [
+                "Open",
+                "High",
+                "Low",
+                "Close",
+            ]
+        ):
+
+            fig.add_trace(
+                go.Ohlc(
+                    x=chart_df.index,
+                    open=chart_df["Open"],
+                    high=chart_df["High"],
+                    low=chart_df["Low"],
+                    close=chart_df["Close"],
+                    name="OHLC",
+                )
+            )
+
+    else:
+
+        if "Close" in chart_df.columns:
+
+            fig.add_trace(
+                go.Scatter(
+                    x=chart_df.index,
+                    y=chart_df["Close"],
+                    mode="lines",
+                    name="Close",
+                )
+            )
+
+    fig = add_selected_overlays(
+        fig,
+        chart_df,
+        selected_indicators,
+    )
+
+    fig.update_layout(
+        height=560,
+        margin=dict(
+            l=10,
+            r=10,
+            t=30,
+            b=10,
+        ),
+        hovermode="x unified",
+        xaxis_rangeslider_visible=False,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+        ),
+    )
+
+    fig.update_xaxes(
+        showgrid=False,
+        fixedrange=False,
+    )
+
+    fig.update_yaxes(
+        showgrid=True,
+        fixedrange=False,
+    )
+
+    return fig
+
+
+# ============================================================
+# INDICATOR PANEL CHART
+# ============================================================
+
+def create_indicator_chart(
+    df,
+    indicator,
+):
+
+    if df is None or df.empty:
+        return None
+
+    fig = go.Figure()
+
+    column_map = {
+        "RSI": "RSI",
+        "ATR": "ATR",
+        "Momentum": "Momentum",
+        "Volume": "Volume",
+        "Volume Ratio": "Volume_Ratio",
+    }
+
+    if indicator == "MACD":
+
+        if "MACD" in df.columns:
+
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=df["MACD"],
+                    mode="lines",
+                    name="MACD",
+                )
+            )
+
+        if "MACD_Signal" in df.columns:
+
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=df["MACD_Signal"],
+                    mode="lines",
+                    name="Signal",
+                )
+            )
+
+        if "MACD_Hist" in df.columns:
+
+            fig.add_trace(
+                go.Bar(
+                    x=df.index,
+                    y=df["MACD_Hist"],
+                    name="Histogram",
+                )
+            )
+
+    else:
+
+        column = column_map.get(
+            indicator
+        )
+
+        if (
+            not column
+            or column not in df.columns
+        ):
+            return None
+
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df[column],
+                mode="lines",
+                name=indicator,
+            )
+        )
+
+        if indicator == "RSI":
+
+            fig.add_hline(
+                y=70,
+                line_dash="dash",
+            )
+
+            fig.add_hline(
+                y=30,
+                line_dash="dash",
+            )
+
+            fig.add_hline(
+                y=50,
+                line_dash="dot",
+            )
+
+    fig.update_layout(
+        height=360,
+        margin=dict(
+            l=10,
+            r=10,
+            t=25,
+            b=10,
+        ),
+        hovermode="x unified",
+        xaxis_rangeslider_visible=False,
+    )
+
+    return fig
 
 
 # ============================================================
@@ -1623,10 +2435,10 @@ def calculate_trade_plan(
 # ============================================================
 
 def show_recommendation_card(
-    stock,
-    strategy_mode,
     signal_data,
     trade_plan,
+    timeframe,
+    compact=False,
 ):
 
     signal = signal_data.get(
@@ -1644,116 +2456,139 @@ def show_recommendation_card(
         "Low",
     )
 
-    bullish_count = signal_data.get(
-        "bullish_count",
-        0,
+    reason = signal_data.get(
+        "reason",
+        "Insufficient technical confirmation.",
     )
 
-    bearish_count = signal_data.get(
-        "bearish_count",
-        0,
+    action = signal_data.get(
+        "action",
+        "Wait for stronger confirmation.",
     )
 
     if signal == "STRONG BUY":
 
         st.success(
-            f"🟢 **STRONG BUY** — Technical score {score:.0f}/100"
+            f"## 🟢 STRONG BUY\n\n"
+            f"**{timeframe} Technical Recommendation**  \n"
+            f"Technical Score: **{score}/100**  \n"
+            f"Confidence: **{confidence}**"
         )
 
     elif signal == "BUY":
 
         st.success(
-            f"🟢 **BUY** — Technical score {score:.0f}/100"
-        )
-
-    elif signal == "SELL":
-
-        st.warning(
-            f"🟠 **SELL** — Technical score {score:.0f}/100"
+            f"## 🟢 BUY\n\n"
+            f"**{timeframe} Technical Recommendation**  \n"
+            f"Technical Score: **{score}/100**  \n"
+            f"Confidence: **{confidence}**"
         )
 
     elif signal == "STRONG SELL":
 
         st.error(
-            f"🔴 **STRONG SELL** — Technical score {score:.0f}/100"
+            f"## 🔴 STRONG SELL\n\n"
+            f"**{timeframe} Technical Recommendation**  \n"
+            f"Technical Score: **{score}/100**  \n"
+            f"Confidence: **{confidence}**"
+        )
+
+    elif signal == "SELL":
+
+        st.error(
+            f"## 🔴 SELL\n\n"
+            f"**{timeframe} Technical Recommendation**  \n"
+            f"Technical Score: **{score}/100**  \n"
+            f"Confidence: **{confidence}**"
         )
 
     else:
 
-        st.info(
-            f"🟡 **HOLD** — Technical score {score:.0f}/100"
+        st.warning(
+            f"## 🟡 HOLD\n\n"
+            f"**{timeframe} Technical Recommendation**  \n"
+            f"Technical Score: **{score}/100**  \n"
+            f"Confidence: **{confidence}**"
         )
 
-    r1, r2, r3, r4 = st.columns(
-        4,
-        gap="small",
+    st.info(
+        f"**What to do now:** {action}"
     )
-
-    with r1:
-
-        st.metric(
-            "Recommendation",
-            signal,
-        )
-
-    with r2:
-
-        st.metric(
-            "Confidence",
-            confidence,
-        )
-
-    with r3:
-
-        st.metric(
-            "Bullish Factors",
-            bullish_count,
-        )
-
-    with r4:
-
-        st.metric(
-            "Bearish Factors",
-            bearish_count,
-        )
 
     st.markdown(
         "### 🧠 Why this recommendation?"
     )
 
-    bullish_reasons = signal_data.get(
-        "bullish_reasons",
-        [],
+    st.write(
+        reason
     )
 
-    bearish_reasons = signal_data.get(
-        "bearish_reasons",
-        [],
-    )
+    if compact:
+        return
 
-    if bullish_reasons:
-
-        st.markdown(
-            "#### 🟢 Bullish confirmations"
-        )
-
-        for reason in bullish_reasons[:6]:
-
-            st.write(
-                "✅ " + reason
-            )
-
-    if bearish_reasons:
+    if signal in [
+        "STRONG BUY",
+        "BUY",
+        "STRONG SELL",
+        "SELL",
+    ]:
 
         st.markdown(
-            "#### 🔴 Bearish confirmations"
+            "### 🎯 Trade Levels"
         )
 
-        for reason in bearish_reasons[:6]:
+        c1, c2, c3, c4 = st.columns(4)
 
-            st.write(
-                "⚠️ " + reason
+        with c1:
+            st.metric(
+                "Entry / Trigger",
+                fmt(
+                    trade_plan.get(
+                        "entry",
+                        np.nan,
+                    )
+                ),
             )
+
+        with c2:
+            st.metric(
+                "Stop Loss",
+                fmt(
+                    trade_plan.get(
+                        "stop_loss",
+                        np.nan,
+                    )
+                ),
+            )
+
+        with c3:
+            st.metric(
+                "Target 1",
+                fmt(
+                    trade_plan.get(
+                        "target1",
+                        np.nan,
+                    )
+                ),
+            )
+
+        with c4:
+            st.metric(
+                "Target 2",
+                fmt(
+                    trade_plan.get(
+                        "target2",
+                        np.nan,
+                    )
+                ),
+            )
+
+    else:
+
+        st.warning(
+            "No high-confidence trade setup currently. "
+            "Wait for stronger confirmation before entering."
+        )
 
     warnings = signal_data.get(
         "warnings",
@@ -1762,323 +2597,462 @@ def show_recommendation_card(
 
     if warnings:
 
-        st.markdown(
-            "#### ⚠️ Risk / Confirmation Warnings"
-        )
+        with st.expander(
+            "⚠️ Important Warnings",
+            expanded=False,
+        ):
 
-        for warning in warnings:
+            for warning in warnings:
 
-            st.warning(
-                warning
-            )
-
-    st.markdown(
-        "### 🎯 Recommended Action"
-    )
-
-    st.info(
-        get_recommendation_action(
-            signal_data,
-            strategy_mode,
-        )
-    )
-
-    if trade_plan:
-
-        st.markdown(
-            f"### 📌 {strategy_mode} Reference Levels"
-        )
-
-        p1, p2, p3, p4 = st.columns(
-            4,
-            gap="small",
-        )
-
-        with p1:
-
-            st.metric(
-                "Entry / Trigger",
-                f"₹{fmt(trade_plan['entry'])}",
-            )
-
-        with p2:
-
-            st.metric(
-                "Stop Loss",
-                f"₹{fmt(trade_plan['stop_loss'])}",
-            )
-
-        with p3:
-
-            st.metric(
-                "Target 1",
-                f"₹{fmt(trade_plan['target1'])}",
-            )
-
-        with p4:
-
-            st.metric(
-                "Target 2",
-                f"₹{fmt(trade_plan['target2'])}",
-            )
+                st.warning(
+                    warning
+                )
 
 
 # ============================================================
-# INDICATOR CHIPS
+# INTRADAY SETUP
 # ============================================================
 
-def show_indicator_chips(
-    indicators,
+def show_intraday_trade_setup(
+    df,
+    signal_data,
+    trade_plan,
 ):
 
-    if not indicators:
+    signal = signal_data["signal"]
 
-        st.caption(
-            "No indicators selected."
+    st.markdown(
+        "### 🎯 Intraday Trade Setup"
+    )
+
+    if signal == "HOLD":
+
+        st.warning(
+            "No high-confidence intraday setup currently. "
+            "Wait for VWAP, Supertrend, momentum and volume confirmation."
         )
 
         return
 
-    chips = []
+    direction = trade_plan["direction"]
 
-    for indicator in indicators:
+    if direction == "BUY":
 
-        chips.append(
-            f"""
-            <span style="
-                display:inline-block;
-                padding:5px 10px;
-                margin:3px 4px 3px 0;
-                border-radius:14px;
-                background:rgba(120,120,120,0.12);
-                border:1px solid rgba(120,120,120,0.25);
-                font-size:13px;
-                white-space:nowrap;
-            ">
-                {indicator}
-            </span>
-            """
+        st.success(
+            "🟢 Bullish intraday setup — buy only after the entry trigger confirms."
+        )
+
+    elif direction == "SELL":
+
+        st.error(
+            "🔴 Bearish intraday setup — sell/short only after the sell trigger confirms."
+        )
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+
+    with c1:
+        st.metric(
+            "Current Price",
+            fmt(
+                latest_value(
+                    df,
+                    "Close",
+                )
+            ),
+        )
+
+    with c2:
+        st.metric(
+            "Entry Trigger",
+            fmt(
+                trade_plan["entry"]
+            ),
+        )
+
+    with c3:
+        st.metric(
+            "Stop Loss",
+            fmt(
+                trade_plan["stop_loss"]
+            ),
+        )
+
+    with c4:
+        st.metric(
+            "Target 1",
+            fmt(
+                trade_plan["target1"]
+            ),
+        )
+
+    with c5:
+        st.metric(
+            "Target 2",
+            fmt(
+                trade_plan["target2"]
+            ),
         )
 
     st.markdown(
-        "".join(chips),
+        "### Entry Zone"
+    )
+
+    z1, z2, z3 = st.columns(3)
+
+    with z1:
+        st.metric(
+            "Zone Low",
+            fmt(
+                trade_plan["zone_low"]
+            ),
+        )
+
+    with z2:
+        st.metric(
+            "Preferred Trigger",
+            fmt(
+                trade_plan["entry"]
+            ),
+        )
+
+    with z3:
+        st.metric(
+            "Zone High",
+            fmt(
+                trade_plan["zone_high"]
+            ),
+        )
+
+    r1, r2, r3 = st.columns(3)
+
+    with r1:
+        st.metric(
+            "ATR",
+            fmt(
+                trade_plan["atr"]
+            ),
+        )
+
+    with r2:
+        st.metric(
+            "Risk",
+            fmt(
+                trade_plan["risk"]
+            ),
+        )
+
+    with r3:
+        st.metric(
+            "Target R:R",
+            f"1:{fmt(trade_plan['rr'], 1)}",
+        )
+
+    st.markdown(
+        "### How to Execute"
+    )
+
+    if direction == "BUY":
+
+        st.markdown(
+            """
+            <div class="info-box">
+            <b>Buy only when:</b>
+            <ul>
+                <li>Price breaks and sustains above the entry trigger.</li>
+                <li>Price remains above VWAP where available.</li>
+                <li>Price remains above Supertrend where available.</li>
+                <li>RSI preferably remains above 50.</li>
+                <li>MACD supports bullish momentum.</li>
+                <li>Volume preferably confirms the breakout.</li>
+            </ul>
+            <b>Risk management:</b> Keep the predefined stop loss.
+            Do not chase an unusually large candle.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    elif direction == "SELL":
+
+        st.markdown(
+            """
+            <div class="info-box">
+            <b>Sell/Short only when:</b>
+            <ul>
+                <li>Price breaks and sustains below the sell trigger.</li>
+                <li>Price remains below VWAP where available.</li>
+                <li>Price remains below Supertrend where available.</li>
+                <li>RSI preferably remains below 50.</li>
+                <li>MACD supports bearish momentum.</li>
+                <li>Volume confirms the downside move.</li>
+            </ul>
+            <b>Risk management:</b> Keep the predefined stop loss.
+            Avoid shorting after an already extended fall.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        "### Intraday Confirmation Checklist"
+    )
+
+    current_price = latest_value(
+        df,
+        "Close",
+    )
+
+    vwap = latest_value(
+        df,
+        "VWAP",
+    )
+
+    supertrend = latest_value(
+        df,
+        "Supertrend",
+    )
+
+    rsi = latest_value(
+        df,
+        "RSI",
+    )
+
+    macd = latest_value(
+        df,
+        "MACD",
+    )
+
+    macd_signal = latest_value(
+        df,
+        "MACD_Signal",
+    )
+
+    volume_ratio = latest_value(
+        df,
+        "Volume_Ratio",
+    )
+
+    checks = []
+
+    if direction == "BUY":
+
+        checks.extend(
+            [
+                (
+                    "Price above VWAP",
+                    not pd.isna(vwap)
+                    and current_price > vwap,
+                ),
+                (
+                    "Price above Supertrend",
+                    not pd.isna(supertrend)
+                    and current_price > supertrend,
+                ),
+                (
+                    "RSI above 50",
+                    not pd.isna(rsi)
+                    and rsi > 50,
+                ),
+                (
+                    "MACD above Signal",
+                    not pd.isna(macd)
+                    and not pd.isna(macd_signal)
+                    and macd > macd_signal,
+                ),
+                (
+                    "Volume confirmation",
+                    not pd.isna(volume_ratio)
+                    and volume_ratio >= 1.2,
+                ),
+            ]
+        )
+
+    else:
+
+        checks.extend(
+            [
+                (
+                    "Price below VWAP",
+                    not pd.isna(vwap)
+                    and current_price < vwap,
+                ),
+                (
+                    "Price below Supertrend",
+                    not pd.isna(supertrend)
+                    and current_price < supertrend,
+                ),
+                (
+                    "RSI below 50",
+                    not pd.isna(rsi)
+                    and rsi < 50,
+                ),
+                (
+                    "MACD below Signal",
+                    not pd.isna(macd)
+                    and not pd.isna(macd_signal)
+                    and macd < macd_signal,
+                ),
+                (
+                    "Volume confirmation",
+                    not pd.isna(volume_ratio)
+                    and volume_ratio >= 1.2,
+                ),
+            ]
+        )
+
+    for label, passed in checks:
+
+        if passed:
+            st.success(
+                f"✓ {label}"
+            )
+        else:
+            st.warning(
+                f"⚠ {label}"
+            )
+
+
+# ============================================================
+# HEADER
+# ============================================================
+
+try:
+
+    page_header(
+        "Technical Analysis",
+        "Professional multi-indicator technical analysis and trade planning",
+    )
+
+except Exception:
+
+    st.markdown(
+        '<div class="main-title">📉 Technical Analysis</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="sub-title">'
+        'Professional multi-indicator technical analysis and trade planning'
+        '</div>',
         unsafe_allow_html=True,
     )
 
 
 # ============================================================
-# LOAD STOCK
+# NAVIGATION
 # ============================================================
 
-stock = get_selected_stock()
+try:
+
+    show_page_navigation()
+
+except Exception:
+    pass
+
+
+# ============================================================
+# STOCK
+# ============================================================
+
+try:
+
+    stock = get_selected_stock()
+
+except Exception:
+
+    stock = None
+
 
 if not stock:
 
     st.warning(
-        "Please select a stock from the Stock Symbol selector."
-    )
-
-    st.stop()
-
-
-with st.spinner(
-    f"Loading technical analysis for {stock}..."
-):
-
-    try:
-
-        data = analyze_stock(stock)
-
-    except Exception as exc:
-
-        st.error(
-            f"Unable to analyze {stock}: {exc}"
-        )
-
-        st.stop()
-
-
-if data is None:
-
-    st.warning(
-        "No data returned for the selected stock."
-    )
-
-    st.stop()
-
-
-if not isinstance(
-    data,
-    pd.DataFrame,
-):
-
-    try:
-
-        data = pd.DataFrame(data)
-
-    except Exception as exc:
-
-        st.error(
-            f"Unable to convert stock data: {exc}"
-        )
-
-        st.stop()
-
-
-if data.empty:
-
-    st.warning(
-        "No market data is available."
+        "Please select a stock from the Dashboard first."
     )
 
     st.stop()
 
 
 # ============================================================
-# PREPARE DATA
+# ANALYSIS CONTROLS
 # ============================================================
 
-df = normalize_columns(data)
-
-df = prepare_datetime_index(df)
-
-df = prepare_numeric_columns(df)
-
-df = calculate_heikin_ashi(df)
-
-
-required_columns = [
-    "Open",
-    "High",
-    "Low",
-    "Close",
-]
-
-missing = [
-    column
-    for column in required_columns
-    if column not in df.columns
-]
-
-if missing:
-
-    st.error(
-        "Missing required market columns: "
-        + ", ".join(missing)
-    )
-
-    st.stop()
-
-
-# ============================================================
-# CURRENT PRICE
-# ============================================================
-
-current_price = latest_value(
-    df,
-    "Close",
+st.markdown(
+    "### ⚙️ Analysis Controls"
 )
 
-previous_close = previous_value(
-    df,
-    "Close",
+st.markdown(
+    '<div class="control-panel">',
+    unsafe_allow_html=True,
 )
 
-if (
-    current_price is not None
-    and previous_close is not None
-    and previous_close != 0
-):
-
-    price_change_pct = (
-        (
-            current_price
-            - previous_close
-        )
-        / previous_close
-    ) * 100
-
-else:
-
-    price_change_pct = None
-
-
-volume = latest_value(
-    df,
-    "Volume",
-)
-
-
-# ============================================================
-# GLOBAL CONTROLS
-# ============================================================
+# ------------------------------------------------------------
+# Row 1
+# ------------------------------------------------------------
 
 control1, control2, control3 = st.columns(
-    3,
-    gap="small",
+    3
 )
 
 with control1:
 
     strategy_mode = st.selectbox(
-        "🎯 Strategy",
-        [
-            "Intraday",
-            "Swing",
-            "Long Term",
-        ],
-        key="technical_strategy_mode",
+        "Strategy",
+        TIMEFRAMES,
+        index=TIMEFRAMES.index(
+            st.session_state.technical_strategy_mode
+        ),
+        key="technical_strategy_select",
+    )
+
+    st.session_state.technical_strategy_mode = (
+        strategy_mode
     )
 
 with control2:
 
-    graph_type = st.selectbox(
-        "📈 Price Chart",
-        [
-            "Heikin Ashi",
-            "Candlestick",
-            "OHLC",
-            "Line",
-        ],
-        key="technical_graph_type",
+    period = st.selectbox(
+        "Analysis Period",
+        PERIODS,
+        index=PERIODS.index(
+            st.session_state.technical_period
+        ),
+        key="technical_period_select",
+    )
+
+    st.session_state.technical_period = (
+        period
     )
 
 with control3:
 
-    period = st.selectbox(
-        "📅 Period",
-        [
-            "30 Days",
-            "60 Days",
-            "90 Days",
-            "180 Days",
-            "1 Year",
-            "All Data",
-        ],
-        key="technical_period",
+    graph_type = st.selectbox(
+        "Chart Type",
+        GRAPH_TYPES,
+        index=GRAPH_TYPES.index(
+            st.session_state.technical_graph_type
+        ),
+        key="technical_graph_select",
     )
 
+    st.session_state.technical_graph_type = (
+        graph_type
+    )
 
-chart_df = filter_period(
-    df,
-    period,
+st.markdown(
+    "</div>",
+    unsafe_allow_html=True,
 )
 
 
 # ============================================================
-# GLOBAL SIGNAL
+# INDICATOR SELECTOR
 # ============================================================
 
-signal_data = calculate_technical_signal(
-    chart_df,
-    strategy_mode,
-)
+with st.container():
 
-trade_plan = calculate_trade_plan(
-    chart_df,
-    strategy_mode,
-    signal_data,
-)
+    selected_indicators = (
+        show_indicator_selector()
+    )
 
 
 # ============================================================
@@ -2086,1731 +3060,1293 @@ trade_plan = calculate_trade_plan(
 # ============================================================
 
 with st.expander(
-    "⭐ Indicator Favorites",
+    "⭐ Favorite Stocks",
     expanded=False,
 ):
 
-    f1, f2, f3 = st.columns(
-        3,
-        gap="small",
+    st.caption(
+        "Save frequently analyzed symbols for quick reference."
     )
 
-    with f1:
+    fav1, fav2, fav3 = st.columns(3)
 
-        if st.button(
-            "⭐ Load Favorite 1",
-            width="stretch",
-        ):
+    with fav1:
 
-            st.session_state[
-                "technical_selected_indicators"
-            ] = st.session_state[
-                "technical_favorite_1"
-            ].copy()
-
-            st.rerun()
-
-    with f2:
-
-        if st.button(
-            "⭐ Load Favorite 2",
-            width="stretch",
-        ):
-
-            st.session_state[
-                "technical_selected_indicators"
-            ] = st.session_state[
-                "technical_favorite_2"
-            ].copy()
-
-            st.rerun()
-
-    with f3:
-
-        if st.button(
-            "⭐ Load Favorite 3",
-            width="stretch",
-        ):
-
-            st.session_state[
-                "technical_selected_indicators"
-            ] = st.session_state[
-                "technical_favorite_3"
-            ].copy()
-
-            st.rerun()
-
-    st.divider()
-
-    selected_indicators = st.multiselect(
-        "📌 Select indicators",
-        options=ALL_INDICATORS,
-        key="technical_selected_indicators",
-        help=(
-            "Select multiple indicators. Overlay indicators "
-            "are drawn on the price chart."
-        ),
-    )
-
-    save1, save2, save3 = st.columns(
-        3,
-        gap="small",
-    )
-
-    with save1:
-
-        if st.button(
-            "💾 Save Favorite 1",
-            width="stretch",
-        ):
-
-            st.session_state[
-                "technical_favorite_1"
-            ] = selected_indicators.copy()
-
-            st.success(
-                "Favorite 1 saved."
+        st.session_state.technical_favorite_1 = (
+            st.text_input(
+                "Favorite 1",
+                value=st.session_state.technical_favorite_1,
+                placeholder="e.g. RELIANCE",
             )
+        )
 
-    with save2:
+    with fav2:
 
-        if st.button(
-            "💾 Save Favorite 2",
-            width="stretch",
-        ):
-
-            st.session_state[
-                "technical_favorite_2"
-            ] = selected_indicators.copy()
-
-            st.success(
-                "Favorite 2 saved."
+        st.session_state.technical_favorite_2 = (
+            st.text_input(
+                "Favorite 2",
+                value=st.session_state.technical_favorite_2,
+                placeholder="e.g. TCS",
             )
+        )
 
-    with save3:
+    with fav3:
 
-        if st.button(
-            "💾 Save Favorite 3",
-            width="stretch",
-        ):
-
-            st.session_state[
-                "technical_favorite_3"
-            ] = selected_indicators.copy()
-
-            st.success(
-                "Favorite 3 saved."
+        st.session_state.technical_favorite_3 = (
+            st.text_input(
+                "Favorite 3",
+                value=st.session_state.technical_favorite_3,
+                placeholder="e.g. INFY",
             )
-
-    st.markdown(
-        "#### Selected Indicators"
-    )
-
-    show_indicator_chips(
-        selected_indicators
-    )
+        )
 
 
 # ============================================================
-# MAIN TABS
+# LOAD DATA
+# ============================================================
+
+with st.spinner(
+    f"Loading technical analysis for {stock}..."
+):
+
+    try:
+
+        raw_data = analyze_stock(
+            stock
+        )
+
+    except Exception as exc:
+
+        st.error(
+            f"Unable to load technical analysis for {stock}: {exc}"
+        )
+
+        st.stop()
+
+
+# ============================================================
+# NORMALIZE
+# ============================================================
+
+data = normalize_columns(
+    raw_data
+)
+
+data = prepare_datetime_index(
+    data
+)
+
+data = prepare_numeric_columns(
+    data
+)
+
+data = filter_period(
+    data,
+    period,
+)
+
+
+if data is None or data.empty:
+
+    st.warning(
+        "No market data is available for the selected stock and period."
+    )
+
+    st.stop()
+
+
+if "Close" not in data.columns:
+
+    st.error(
+        "The market-data service did not return a Close price column."
+    )
+
+    st.stop()
+
+
+# ============================================================
+# COMMON METRICS
+# ============================================================
+
+current_price = latest_value(
+    data,
+    "Close",
+)
+
+previous_close = previous_value(
+    data,
+    "Close",
+    current_price,
+)
+
+daily_change = (
+    safe_divide(
+        current_price - previous_close,
+        previous_close,
+    )
+    * 100
+)
+
+rsi = latest_value(
+    data,
+    "RSI",
+)
+
+macd = latest_value(
+    data,
+    "MACD",
+)
+
+macd_signal = latest_value(
+    data,
+    "MACD_Signal",
+)
+
+macd_hist = latest_value(
+    data,
+    "MACD_Hist",
+)
+
+momentum = latest_value(
+    data,
+    "Momentum",
+)
+
+vwap = latest_value(
+    data,
+    "VWAP",
+)
+
+supertrend = latest_value(
+    data,
+    "Supertrend",
+)
+
+volume_ratio = latest_value(
+    data,
+    "Volume_Ratio",
+)
+
+atr = latest_value(
+    data,
+    "ATR",
+)
+
+sma20 = latest_value(
+    data,
+    "SMA_20",
+)
+
+sma50 = latest_value(
+    data,
+    "SMA_50",
+)
+
+ema20 = latest_value(
+    data,
+    "EMA_20",
+)
+
+ema50 = latest_value(
+    data,
+    "EMA_50",
+)
+
+bb_upper = latest_value(
+    data,
+    "BB_Upper",
+)
+
+bb_middle = latest_value(
+    data,
+    "BB_Middle",
+)
+
+bb_lower = latest_value(
+    data,
+    "BB_Lower",
+)
+
+
+# ============================================================
+# SIGNAL
+# ============================================================
+
+signal_data = calculate_technical_signal(
+    data,
+    strategy_mode,
+)
+
+trade_plan = calculate_trade_plan(
+    data,
+    strategy_mode,
+    signal_data,
+)
+
+
+# ============================================================
+# TABS
 # ============================================================
 
 tabs = st.tabs(
     [
         "📊 Overview",
         "📈 Moving Averages",
-        "⚡ Momentum",
-        "📊 Volatility",
-        "💹 Intraday",
+        "🚀 Momentum",
+        "⚡ Volatility",
+        "🎯 Intraday",
         "🕯️ Candlestick",
-        "🎯 Trade Setup",
-        "📚 Indicator Guide",
+        "💰 Trade Setup",
+        "📘 Indicator Guide",
     ]
 )
 
 
 # ============================================================
-# TAB 1 - OVERVIEW
+# TAB 1 — OVERVIEW
 # ============================================================
 
 with tabs[0]:
 
-    st.subheader(
-        f"📊 {stock.replace('.NS', '')} Technical Overview"
+    st.markdown(
+        f"""
+        <div class="main-title">
+            {stock} Technical Overview
+        </div>
+
+        <div class="sub-title">
+            {strategy_mode} strategy • {period}
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    # --------------------------------------------------------
-    # Price summary
-    # --------------------------------------------------------
+    m1, m2, m3, m4 = st.columns(4)
 
-    c1, c2, c3, c4 = st.columns(
-        4,
-        gap="small",
-    )
-
-    with c1:
+    with m1:
 
         st.metric(
             "Current Price",
-            (
-                f"₹{fmt(current_price)}"
-                if current_price is not None
-                else "N/A"
-            ),
-            (
-                pct(price_change_pct)
-                if price_change_pct is not None
-                else None
-            ),
+            fmt(current_price),
+            f"{daily_change:+.2f}%",
         )
 
-    with c2:
+    with m2:
 
         st.metric(
             "Technical Score",
-            f"{signal_data['score']:.0f}/100",
+            f"{signal_data['score']}/100",
         )
 
-    with c3:
+    with m3:
 
         st.metric(
             "Bullish Factors",
             signal_data["bullish_count"],
         )
 
-    with c4:
+    with m4:
 
         st.metric(
             "Bearish Factors",
             signal_data["bearish_count"],
         )
 
-    st.divider()
-
-    # --------------------------------------------------------
-    # PROFESSIONAL RECOMMENDATION
-    # --------------------------------------------------------
-
     st.markdown(
-        "## 🧠 Professional Technical Recommendation"
-    )
-
-    st.caption(
-        f"Strategy: **{strategy_mode}** | "
-        f"Period: **{period}** | "
-        f"Stock: **{stock.replace('.NS', '')}**"
+        "### ⭐ Main Recommendation"
     )
 
     show_recommendation_card(
-        stock,
-        strategy_mode,
         signal_data,
         trade_plan,
-    )
-
-    # --------------------------------------------------------
-    # Quick setup
-    # --------------------------------------------------------
-
-    if trade_plan:
-
-        st.divider()
-
-        st.markdown(
-            f"### 🎯 {strategy_mode} Quick Setup"
-        )
-
-        q1, q2, q3, q4 = st.columns(
-            4,
-            gap="small",
-        )
-
-        with q1:
-
-            st.metric(
-                "Entry",
-                f"₹{fmt(trade_plan['entry'])}",
-            )
-
-        with q2:
-
-            st.metric(
-                "Stop Loss",
-                f"₹{fmt(trade_plan['stop_loss'])}",
-            )
-
-        with q3:
-
-            st.metric(
-                "Target 1",
-                f"₹{fmt(trade_plan['target1'])}",
-            )
-
-        with q4:
-
-            st.metric(
-                "Target 2",
-                f"₹{fmt(trade_plan['target2'])}",
-            )
-
-
-# ============================================================
-# TAB 2 - MOVING AVERAGES
-# ============================================================
-
-with tabs[1]:
-
-    st.subheader(
-        "📈 Moving Average Analysis"
-    )
-
-    ma_columns = [
-        ("SMA 20", "SMA_20"),
-        ("SMA 50", "SMA_50"),
-        ("EMA 20", "EMA_20"),
-        ("EMA 50", "EMA_50"),
-    ]
-
-    available = [
-        item
-        for item in ma_columns
-        if item[1] in chart_df.columns
-    ]
-
-    if available:
-
-        cols = st.columns(
-            len(available),
-            gap="small",
-        )
-
-        for col, (
-            label,
-            column,
-        ) in zip(
-            cols,
-            available,
-        ):
-
-            with col:
-
-                st.metric(
-                    label,
-                    fmt(
-                        latest_value(
-                            chart_df,
-                            column,
-                        )
-                    ),
-                    help=get_indicator_tooltip(
-                        label
-                    ),
-                )
-
-    st.divider()
-
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Scatter(
-            x=chart_df.index,
-            y=chart_df["Close"],
-            name="Close",
-            mode="lines",
-        )
-    )
-
-    for label, column in ma_columns:
-
-        if column in chart_df.columns:
-
-            fig.add_trace(
-                go.Scatter(
-                    x=chart_df.index,
-                    y=chart_df[column],
-                    name=label,
-                    mode="lines",
-                )
-            )
-
-    fig.update_layout(
-        title="Price vs Moving Averages",
-        height=550,
-        autosize=True,
-        hovermode="x unified",
-        margin=dict(
-            l=40,
-            r=20,
-            t=60,
-            b=40,
-        ),
-    )
-
-    st.plotly_chart(
-        fig,
-        width="stretch",
-        config={
-            "responsive": True,
-            "displaylogo": False,
-            "scrollZoom": True,
-        },
-    )
-
-    close = latest_value(
-        chart_df,
-        "Close",
-    )
-
-    sma20 = latest_value(
-        chart_df,
-        "SMA_20",
-    )
-
-    sma50 = latest_value(
-        chart_df,
-        "SMA_50",
-    )
-
-    ema20 = latest_value(
-        chart_df,
-        "EMA_20",
-    )
-
-    ema50 = latest_value(
-        chart_df,
-        "EMA_50",
+        strategy_mode,
     )
 
     st.markdown(
-        "### 📌 Trend Interpretation"
+        "### 📌 What Should You Do Now?"
     )
 
-    if (
-        close is not None
-        and sma20 is not None
-        and sma50 is not None
-    ):
+    if signal_data["signal"] == "STRONG BUY":
 
-        if (
-            close > sma20
-            and sma20 > sma50
-        ):
+        st.success(
+            f"STRONG BUY: Monitor the stock for a sustained move above "
+            f"{fmt(trade_plan['entry'])}. Stop loss: "
+            f"{fmt(trade_plan['stop_loss'])}. "
+            f"Targets: {fmt(trade_plan['target1'])} and "
+            f"{fmt(trade_plan['target2'])}."
+        )
 
-            st.success(
-                "Bullish MA structure: Price > SMA 20 > SMA 50."
-            )
+    elif signal_data["signal"] == "BUY":
 
-        elif (
-            close < sma20
-            and sma20 < sma50
-        ):
+        st.success(
+            f"BUY: Consider entry after price confirms "
+            f"{fmt(trade_plan['entry'])}. "
+            f"Stop loss: {fmt(trade_plan['stop_loss'])}. "
+            f"Targets: {fmt(trade_plan['target1'])} / "
+            f"{fmt(trade_plan['target2'])}."
+        )
 
-            st.error(
-                "Bearish MA structure: Price < SMA 20 < SMA 50."
-            )
+    elif signal_data["signal"] == "STRONG SELL":
+
+        st.error(
+            f"STRONG SELL: Avoid fresh long positions. "
+            f"Consider sell/short confirmation below "
+            f"{fmt(trade_plan['entry'])}. "
+            f"Stop loss: {fmt(trade_plan['stop_loss'])}."
+        )
+
+    elif signal_data["signal"] == "SELL":
+
+        st.error(
+            f"SELL: Technical structure is weak. "
+            f"Wait for confirmation below "
+            f"{fmt(trade_plan['entry'])} before selling."
+        )
+
+    else:
+
+        st.warning(
+            "HOLD: Do not force a trade. "
+            "Wait for stronger technical alignment."
+        )
+
+    left, right = st.columns(2)
+
+    with left:
+
+        st.markdown(
+            "### 🟢 Bullish Factors"
+        )
+
+        if signal_data["bullish_reasons"]:
+
+            for reason in signal_data["bullish_reasons"]:
+
+                st.markdown(
+                    f"""
+                    <div class="factor-card factor-positive">
+                        ✓ {reason}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
         else:
 
             st.info(
-                "Moving averages are mixed."
+                "No strong bullish factors detected."
+            )
+
+    with right:
+
+        st.markdown(
+            "### 🔴 Bearish Factors"
+        )
+
+        if signal_data["bearish_reasons"]:
+
+            for reason in signal_data["bearish_reasons"]:
+
+                st.markdown(
+                    f"""
+                    <div class="factor-card factor-negative">
+                        ⚠ {reason}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        else:
+
+            st.info(
+                "No strong bearish factors detected."
+            )
+
+    st.markdown(
+        "### 📈 Price & Selected Indicators"
+    )
+
+    fig = create_price_chart(
+        data,
+        graph_type,
+        selected_indicators,
+    )
+
+    if fig is not None:
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+        )
+
+
+# ============================================================
+# TAB 2 — MOVING AVERAGES
+# ============================================================
+
+with tabs[1]:
+
+    st.markdown(
+        "## 📈 Moving Average Analysis"
+    )
+
+    ma1, ma2, ma3, ma4 = st.columns(4)
+
+    with ma1:
+        st.metric(
+            "SMA 20",
+            fmt(sma20),
+        )
+
+    with ma2:
+        st.metric(
+            "SMA 50",
+            fmt(sma50),
+        )
+
+    with ma3:
+        st.metric(
+            "EMA 20",
+            fmt(ema20),
+        )
+
+    with ma4:
+        st.metric(
+            "EMA 50",
+            fmt(ema50),
+        )
+
+    if (
+        not pd.isna(sma20)
+        and not pd.isna(sma50)
+    ):
+
+        if sma20 > sma50:
+
+            st.success(
+                "Bullish moving-average structure: SMA 20 is above SMA 50."
+            )
+
+        else:
+
+            st.error(
+                "Bearish moving-average structure: SMA 20 is below SMA 50."
             )
 
     if (
-        ema20 is not None
-        and ema50 is not None
+        not pd.isna(ema20)
+        and not pd.isna(ema50)
     ):
 
         if ema20 > ema50:
 
             st.success(
-                "EMA 20 is above EMA 50 — positive short-term momentum."
+                "EMA trend is bullish: EMA 20 is above EMA 50."
             )
 
         else:
 
-            st.warning(
-                "EMA 20 is below EMA 50 — negative short-term momentum."
+            st.error(
+                "EMA trend is bearish: EMA 20 is below EMA 50."
             )
+
+    fig = create_price_chart(
+        data,
+        graph_type,
+        [
+            "SMA 20",
+            "SMA 50",
+            "EMA 20",
+            "EMA 50",
+        ],
+    )
+
+    if fig is not None:
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+        )
+
+    st.markdown(
+        "### 📘 Interpretation"
+    )
+
+    st.info(
+        "SMA 20 and EMA 20 are primarily used for short-term trend direction. "
+        "SMA 50 and EMA 50 provide broader trend confirmation. "
+        "A faster average above a slower average generally supports bullish structure."
+    )
 
 
 # ============================================================
-# TAB 3 - MOMENTUM
+# TAB 3 — MOMENTUM
 # ============================================================
 
 with tabs[2]:
 
-    st.subheader(
-        "⚡ Momentum Analysis"
+    st.markdown(
+        "## 🚀 Momentum Analysis"
     )
 
-    rsi = latest_value(
-        chart_df,
-        "RSI",
-    )
+    p1, p2, p3, p4 = st.columns(4)
 
-    macd = latest_value(
-        chart_df,
-        "MACD",
-    )
-
-    macd_signal = latest_value(
-        chart_df,
-        "MACD_Signal",
-    )
-
-    macd_hist = latest_value(
-        chart_df,
-        "MACD_Histogram",
-    )
-
-    momentum = latest_value(
-        chart_df,
-        "Momentum",
-    )
-
-    m1, m2, m3, m4 = st.columns(
-        4,
-        gap="small",
-    )
-
-    with m1:
-
+    with p1:
         st.metric(
             "RSI",
             fmt(rsi, 1),
-            help=get_indicator_tooltip("RSI"),
         )
 
-    with m2:
-
+    with p2:
         st.metric(
             "MACD",
-            fmt(macd),
-            help=get_indicator_tooltip("MACD"),
+            fmt(macd, 3),
         )
 
-    with m3:
-
+    with p3:
         st.metric(
             "MACD Signal",
-            fmt(macd_signal),
+            fmt(macd_signal, 3),
         )
 
-    with m4:
-
+    with p4:
         st.metric(
             "Momentum",
-            fmt(momentum),
-            help=get_indicator_tooltip("Momentum"),
+            fmt(momentum, 2),
         )
 
-    if "RSI" in chart_df.columns:
-
-        st.markdown(
-            "### RSI"
-        )
-
-        fig_rsi = go.Figure()
-
-        fig_rsi.add_trace(
-            go.Scatter(
-                x=chart_df.index,
-                y=chart_df["RSI"],
-                mode="lines",
-                name="RSI",
-            )
-        )
-
-        fig_rsi.add_hline(
-            y=70,
-            line_dash="dash",
-        )
-
-        fig_rsi.add_hline(
-            y=50,
-            line_dash="dot",
-        )
-
-        fig_rsi.add_hline(
-            y=30,
-            line_dash="dash",
-        )
-
-        fig_rsi.update_yaxes(
-            range=[0, 100]
-        )
-
-        fig_rsi.update_layout(
-            height=350,
-            hovermode="x unified",
-        )
-
-        st.plotly_chart(
-            fig_rsi,
-            width="stretch",
-            config={
-                "responsive": True,
-                "displaylogo": False,
-            },
-        )
-
-    if rsi is not None:
+    if not pd.isna(rsi):
 
         if rsi >= 70:
 
             st.warning(
-                f"RSI {rsi:.1f}: overbought zone. "
-                "Avoid chasing unless price action confirms continuation."
+                f"RSI {rsi:.1f}: Overbought zone. Avoid chasing extended moves."
             )
 
         elif rsi <= 30:
 
-            st.info(
-                f"RSI {rsi:.1f}: oversold zone. "
-                "Look for reversal confirmation."
+            st.warning(
+                f"RSI {rsi:.1f}: Oversold zone. Wait for reversal confirmation."
             )
 
         elif rsi >= 50:
 
             st.success(
-                f"RSI {rsi:.1f}: bullish momentum zone."
+                f"RSI {rsi:.1f}: Momentum is bullish."
             )
 
         else:
 
-            st.warning(
-                f"RSI {rsi:.1f}: weaker momentum."
+            st.error(
+                f"RSI {rsi:.1f}: Momentum is weak."
             )
 
     if (
-        "MACD" in chart_df.columns
-        and "MACD_Signal" in chart_df.columns
+        not pd.isna(macd)
+        and not pd.isna(macd_signal)
     ):
 
-        st.markdown(
-            "### MACD"
-        )
+        if macd > macd_signal:
 
-        fig_macd = go.Figure()
-
-        fig_macd.add_trace(
-            go.Scatter(
-                x=chart_df.index,
-                y=chart_df["MACD"],
-                name="MACD",
-                mode="lines",
-            )
-        )
-
-        fig_macd.add_trace(
-            go.Scatter(
-                x=chart_df.index,
-                y=chart_df["MACD_Signal"],
-                name="Signal",
-                mode="lines",
-            )
-        )
-
-        if "MACD_Histogram" in chart_df.columns:
-
-            fig_macd.add_trace(
-                go.Bar(
-                    x=chart_df.index,
-                    y=chart_df["MACD_Histogram"],
-                    name="Histogram",
-                )
+            st.success(
+                "MACD is above Signal — bullish momentum confirmation."
             )
 
-        fig_macd.add_hline(
-            y=0,
-            line_dash="dot",
+        else:
+
+            st.error(
+                "MACD is below Signal — bearish momentum confirmation."
+            )
+
+    for indicator in [
+        "RSI",
+        "MACD",
+        "Momentum",
+    ]:
+
+        fig = create_indicator_chart(
+            data,
+            indicator,
         )
 
-        fig_macd.update_layout(
-            height=400,
-            hovermode="x unified",
-        )
+        if fig is not None:
 
-        st.plotly_chart(
-            fig_macd,
-            width="stretch",
-            config={
-                "responsive": True,
-                "displaylogo": False,
-            },
-        )
+            st.markdown(
+                f"### {indicator}"
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+            )
 
 
 # ============================================================
-# TAB 4 - VOLATILITY
+# TAB 4 — VOLATILITY
 # ============================================================
 
 with tabs[3]:
 
-    st.subheader(
-        "📊 Volatility Analysis"
+    st.markdown(
+        "## ⚡ Volatility Analysis"
     )
 
-    atr = latest_value(
-        chart_df,
-        "ATR",
-    )
-
-    bb_upper = latest_value(
-        chart_df,
-        "BB_Upper",
-    )
-
-    bb_middle = latest_value(
-        chart_df,
-        "BB_Middle",
-    )
-
-    bb_lower = latest_value(
-        chart_df,
-        "BB_Lower",
-    )
-
-    v1, v2, v3, v4 = st.columns(
-        4,
-        gap="small",
-    )
+    v1, v2, v3, v4 = st.columns(4)
 
     with v1:
-
         st.metric(
             "ATR",
             fmt(atr),
-            help=get_indicator_tooltip("ATR"),
         )
 
     with v2:
-
         st.metric(
             "BB Upper",
             fmt(bb_upper),
         )
 
     with v3:
-
         st.metric(
             "BB Middle",
             fmt(bb_middle),
         )
 
     with v4:
-
         st.metric(
             "BB Lower",
             fmt(bb_lower),
         )
 
-    if all(
-        column in chart_df.columns
-        for column in [
-            "BB_Upper",
-            "BB_Middle",
-            "BB_Lower",
-        ]
-    ):
-
-        st.markdown(
-            "### Bollinger Bands"
-        )
-
-        fig_bb = go.Figure()
-
-        fig_bb.add_trace(
-            go.Scatter(
-                x=chart_df.index,
-                y=chart_df["Close"],
-                name="Close",
-                mode="lines",
-            )
-        )
-
-        fig_bb.add_trace(
-            go.Scatter(
-                x=chart_df.index,
-                y=chart_df["BB_Upper"],
-                name="Upper",
-                mode="lines",
-            )
-        )
-
-        fig_bb.add_trace(
-            go.Scatter(
-                x=chart_df.index,
-                y=chart_df["BB_Middle"],
-                name="Middle",
-                mode="lines",
-            )
-        )
-
-        fig_bb.add_trace(
-            go.Scatter(
-                x=chart_df.index,
-                y=chart_df["BB_Lower"],
-                name="Lower",
-                mode="lines",
-            )
-        )
-
-        fig_bb.update_layout(
-            height=500,
-            hovermode="x unified",
-        )
-
-        st.plotly_chart(
-            fig_bb,
-            width="stretch",
-            config={
-                "responsive": True,
-                "displaylogo": False,
-            },
-        )
-
-    if "ATR" in chart_df.columns:
-
-        st.markdown(
-            "### Average True Range"
-        )
-
-        fig_atr = go.Figure()
-
-        fig_atr.add_trace(
-            go.Scatter(
-                x=chart_df.index,
-                y=chart_df["ATR"],
-                mode="lines",
-                name="ATR",
-            )
-        )
-
-        fig_atr.update_layout(
-            height=350,
-            hovermode="x unified",
-        )
-
-        st.plotly_chart(
-            fig_atr,
-            width="stretch",
-            config={
-                "responsive": True,
-                "displaylogo": False,
-            },
-        )
-
     if (
-        current_price is not None
-        and atr is not None
-        and current_price != 0
+        not pd.isna(bb_upper)
+        and not pd.isna(bb_lower)
+        and not pd.isna(current_price)
     ):
 
-        atr_pct = (
-            atr / current_price
-        ) * 100
+        if current_price >= bb_upper:
 
-        st.info(
-            f"ATR is approximately {atr_pct:.2f}% "
-            "of the current price. Higher ATR generally "
-            "means wider stop-loss requirements."
+            st.warning(
+                "Price is near/above the upper Bollinger Band. "
+                "The stock may be extended."
+            )
+
+        elif current_price <= bb_lower:
+
+            st.warning(
+                "Price is near/below the lower Bollinger Band. "
+                "Watch for reversal or continuation confirmation."
+            )
+
+        elif (
+            not pd.isna(bb_middle)
+            and current_price > bb_middle
+        ):
+
+            st.success(
+                "Price is above the Bollinger middle band."
+            )
+
+        else:
+
+            st.info(
+                "Price is below the Bollinger middle band."
+            )
+
+    fig = create_price_chart(
+        data,
+        graph_type,
+        [
+            "Bollinger Bands",
+        ],
+    )
+
+    if fig is not None:
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+        )
+
+    atr_fig = create_indicator_chart(
+        data,
+        "ATR",
+    )
+
+    if atr_fig is not None:
+
+        st.markdown(
+            "### ATR"
+        )
+
+        st.plotly_chart(
+            atr_fig,
+            use_container_width=True,
         )
 
 
 # ============================================================
-# TAB 5 - INTRADAY
+# TAB 5 — INTRADAY
 # ============================================================
 
 with tabs[4]:
 
-    st.subheader(
-        "💹 Intraday Analysis"
+    st.markdown(
+        "## 🎯 Intraday Analysis"
     )
 
-    i1, i2, i3, i4 = st.columns(
-        4,
-        gap="small",
-    )
-
-    vwap = latest_value(
-        chart_df,
-        "VWAP",
-    )
-
-    supertrend = latest_value(
-        chart_df,
-        "Supertrend",
-    )
-
-    volume_ratio = latest_value(
-        chart_df,
-        "Volume_Ratio",
-    )
+    i1, i2, i3, i4 = st.columns(4)
 
     with i1:
-
         st.metric(
             "Price",
-            f"₹{fmt(current_price)}",
+            fmt(current_price),
         )
 
     with i2:
-
         st.metric(
             "VWAP",
-            f"₹{fmt(vwap)}",
-            help=get_indicator_tooltip("VWAP"),
+            fmt(vwap),
         )
 
     with i3:
-
         st.metric(
             "Supertrend",
-            f"₹{fmt(supertrend)}",
-            help=get_indicator_tooltip("Supertrend"),
+            fmt(supertrend),
         )
 
     with i4:
-
         st.metric(
             "Volume Ratio",
-            fmt(volume_ratio),
-            help=get_indicator_tooltip("Volume Ratio"),
+            fmt(volume_ratio, 2),
         )
 
-    st.markdown(
-        "### 📌 Intraday Bias"
-    )
+    bullish_intraday = 0
+    bearish_intraday = 0
 
-    bullish = 0
-    bearish = 0
-
-    if (
-        current_price is not None
-        and vwap is not None
-    ):
+    if not pd.isna(vwap):
 
         if current_price > vwap:
-            bullish += 1
+            bullish_intraday += 1
         else:
-            bearish += 1
+            bearish_intraday += 1
 
-    if (
-        current_price is not None
-        and supertrend is not None
-    ):
+    if not pd.isna(supertrend):
 
         if current_price > supertrend:
-            bullish += 1
+            bullish_intraday += 1
         else:
-            bearish += 1
+            bearish_intraday += 1
 
-    if rsi is not None:
+    if not pd.isna(rsi):
 
-        if rsi >= 50:
-            bullish += 1
+        if rsi > 50:
+            bullish_intraday += 1
         else:
-            bearish += 1
+            bearish_intraday += 1
 
     if (
-        macd is not None
-        and macd_signal is not None
+        not pd.isna(macd)
+        and not pd.isna(macd_signal)
     ):
 
         if macd > macd_signal:
-            bullish += 1
+            bullish_intraday += 1
         else:
-            bearish += 1
+            bearish_intraday += 1
 
-    if bullish > bearish:
+    if bullish_intraday >= 3:
 
         st.success(
-            f"🟢 Bullish intraday bias "
-            f"({bullish} vs {bearish} factors)."
+            "🟢 Intraday Bias: BULLISH"
         )
 
-    elif bearish > bullish:
+    elif bearish_intraday >= 3:
 
         st.error(
-            f"🔴 Bearish intraday bias "
-            f"({bearish} vs {bullish} factors)."
+            "🔴 Intraday Bias: BEARISH"
         )
 
     else:
 
-        st.info(
-            "🟡 Neutral intraday bias."
+        st.warning(
+            "🟡 Intraday Bias: MIXED"
         )
 
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Candlestick(
-            x=chart_df.index,
-            open=chart_df["Open"],
-            high=chart_df["High"],
-            low=chart_df["Low"],
-            close=chart_df["Close"],
-            name="Price",
-        )
+    intraday_signal = calculate_technical_signal(
+        data,
+        "Intraday",
     )
 
-    if "VWAP" in chart_df.columns:
-
-        fig.add_trace(
-            go.Scatter(
-                x=chart_df.index,
-                y=chart_df["VWAP"],
-                mode="lines",
-                name="VWAP",
-            )
-        )
-
-    if "Supertrend" in chart_df.columns:
-
-        fig.add_trace(
-            go.Scatter(
-                x=chart_df.index,
-                y=chart_df["Supertrend"],
-                mode="lines",
-                name="Supertrend",
-            )
-        )
-
-    fig.update_layout(
-        height=600,
-        hovermode="x unified",
-        xaxis_rangeslider_visible=False,
+    intraday_plan = calculate_trade_plan(
+        data,
+        "Intraday",
+        intraday_signal,
     )
 
-    st.plotly_chart(
-        fig,
-        width="stretch",
-        config={
-            "responsive": True,
-            "displaylogo": False,
-            "scrollZoom": True,
-        },
+    show_intraday_trade_setup(
+        data,
+        intraday_signal,
+        intraday_plan,
     )
 
     st.markdown(
-        "### 🕐 Intraday Conditions"
+        "### 📈 Intraday Price Structure"
     )
 
-    if (
-        current_price is not None
-        and vwap is not None
-    ):
+    intraday_fig = create_price_chart(
+        data,
+        graph_type,
+        [
+            "VWAP",
+            "Supertrend",
+        ],
+    )
 
-        if current_price > vwap:
+    if intraday_fig is not None:
 
-            st.success(
-                "Price is above VWAP — buyers have the intraday advantage."
-            )
-
-        else:
-
-            st.warning(
-                "Price is below VWAP — sellers have the intraday advantage."
-            )
-
-    if (
-        volume_ratio is not None
-        and volume_ratio >= 1.5
-    ):
-
-        st.success(
-            f"Volume spike detected: "
-            f"{volume_ratio:.2f}x reference volume."
+        st.plotly_chart(
+            intraday_fig,
+            use_container_width=True,
         )
 
 
 # ============================================================
-# TAB 6 - CANDLESTICK
+# TAB 6 — CANDLESTICK
 # ============================================================
 
 with tabs[5]:
 
-    st.subheader(
-        "🕯️ Candlestick Analysis"
+    st.markdown(
+        "## 🕯️ Candlestick Analysis"
     )
 
-    candle = detect_candlestick_pattern(
-        chart_df
+    pattern = detect_candlestick_pattern(
+        data
     )
 
-    p1, p2 = st.columns(
-        2,
-        gap="medium",
+    st.metric(
+        "Latest Pattern",
+        pattern,
     )
 
-    with p1:
-
-        st.metric(
-            "Detected Pattern",
-            candle["pattern"],
-        )
-
-    with p2:
-
-        st.metric(
-            "Pattern Bias",
-            candle["bias"],
-        )
-
-    if candle["bias"] == "Bullish":
+    if pattern in [
+        "Bullish Engulfing",
+        "Hammer",
+        "Inverted Hammer",
+        "Bullish Candle",
+    ]:
 
         st.success(
-            "🟢 Bullish pattern detected"
+            f"🟢 Bullish candlestick pattern detected: {pattern}"
         )
 
-    elif candle["bias"] == "Bearish":
+    elif pattern in [
+        "Bearish Engulfing",
+        "Shooting Star",
+        "Bearish Candle",
+    ]:
 
         st.error(
-            "🔴 Bearish pattern detected"
+            f"🔴 Bearish candlestick pattern detected: {pattern}"
+        )
+
+    elif pattern == "Doji":
+
+        st.warning(
+            "🟡 Doji detected — market indecision. "
+            "Wait for confirmation."
         )
 
     else:
 
         st.info(
-            "🟡 Neutral / indecision pattern"
+            "No strong directional candlestick pattern detected."
         )
 
-    st.write(
-        candle["description"]
+    candle_fig = create_price_chart(
+        data,
+        "Candlestick",
+        selected_indicators,
     )
+
+    if candle_fig is not None:
+
+        st.plotly_chart(
+            candle_fig,
+            use_container_width=True,
+        )
 
     st.markdown(
-        "### Price Action"
+        "### 📘 Pattern Guide"
     )
 
-    candle_df = chart_df.tail(120)
-
-    fig = go.Figure()
-
-    if graph_type == "Heikin Ashi":
-
-        fig.add_trace(
-            go.Candlestick(
-                x=candle_df.index,
-                open=candle_df["HA_Open"],
-                high=candle_df["HA_High"],
-                low=candle_df["HA_Low"],
-                close=candle_df["HA_Close"],
-                name="Heikin Ashi",
-            )
-        )
-
-    elif graph_type == "OHLC":
-
-        fig.add_trace(
-            go.Ohlc(
-                x=candle_df.index,
-                open=candle_df["Open"],
-                high=candle_df["High"],
-                low=candle_df["Low"],
-                close=candle_df["Close"],
-                name="OHLC",
-            )
-        )
-
-    elif graph_type == "Line":
-
-        fig.add_trace(
-            go.Scatter(
-                x=candle_df.index,
-                y=candle_df["Close"],
-                mode="lines",
-                name="Close",
-            )
-        )
-
-    else:
-
-        fig.add_trace(
-            go.Candlestick(
-                x=candle_df.index,
-                open=candle_df["Open"],
-                high=candle_df["High"],
-                low=candle_df["Low"],
-                close=candle_df["Close"],
-                name="Candlestick",
-            )
-        )
-
-    fig.update_layout(
-        height=600,
-        hovermode="x unified",
-        xaxis_rangeslider_visible=False,
+    st.info(
+        "Bullish Engulfing and Hammer can indicate potential bullish reversal. "
+        "Bearish Engulfing and Shooting Star can indicate potential bearish reversal. "
+        "Doji indicates indecision and should be confirmed using trend, momentum and volume."
     )
-
-    st.plotly_chart(
-        fig,
-        width="stretch",
-        config={
-            "responsive": True,
-            "displaylogo": False,
-            "scrollZoom": True,
-        },
-    )
-
-    with st.expander(
-        "📚 Common Candlestick Patterns"
-    ):
-
-        pattern_table = pd.DataFrame(
-            [
-                [
-                    "Bullish Engulfing",
-                    "Bullish",
-                    "Potential reversal / buying pressure",
-                ],
-                [
-                    "Bearish Engulfing",
-                    "Bearish",
-                    "Potential reversal / selling pressure",
-                ],
-                [
-                    "Hammer",
-                    "Bullish",
-                    "Lower-price rejection",
-                ],
-                [
-                    "Shooting Star",
-                    "Bearish",
-                    "Higher-price rejection",
-                ],
-                [
-                    "Doji",
-                    "Neutral",
-                    "Market indecision",
-                ],
-            ],
-            columns=[
-                "Pattern",
-                "Bias",
-                "Meaning",
-            ],
-        )
-
-        st.dataframe(
-            pattern_table,
-            width="stretch",
-            hide_index=True,
-        )
 
 
 # ============================================================
-# TAB 7 - TRADE SETUP
+# TAB 7 — TRADE SETUP
 # ============================================================
 
 with tabs[6]:
 
-    st.subheader(
-        f"🎯 {strategy_mode} Trade Setup"
-    )
-
-    st.caption(
-        "Levels are rule-based reference levels derived "
-        "from technical indicators and ATR."
-    )
-
-    # --------------------------------------------------------
-    # Recommendation
-    # --------------------------------------------------------
-
     st.markdown(
-        "## 🧠 Trade Decision"
+        f"## 💰 {strategy_mode} Trade Setup"
     )
 
     show_recommendation_card(
-        stock,
-        strategy_mode,
         signal_data,
         trade_plan,
+        strategy_mode,
     )
 
-    if trade_plan:
-
-        st.divider()
-
-        t1, t2, t3, t4, t5 = st.columns(
-            5,
-            gap="small",
-        )
-
-        with t1:
-
-            st.metric(
-                "Entry / Trigger",
-                f"₹{fmt(trade_plan['entry'])}",
-            )
-
-        with t2:
-
-            st.metric(
-                "Stop Loss",
-                f"₹{fmt(trade_plan['stop_loss'])}",
-            )
-
-        with t3:
-
-            st.metric(
-                "Target 1",
-                f"₹{fmt(trade_plan['target1'])}",
-            )
-
-        with t4:
-
-            st.metric(
-                "Target 2",
-                f"₹{fmt(trade_plan['target2'])}",
-            )
-
-        with t5:
-
-            if trade_plan["entry"]:
-
-                risk_pct = (
-                    trade_plan["risk"]
-                    / trade_plan["entry"]
-                ) * 100
-
-            else:
-
-                risk_pct = 0
-
-            st.metric(
-                "Risk",
-                f"{risk_pct:.2f}%",
-            )
-
-        # ----------------------------------------------------
-        # Entry zone
-        # ----------------------------------------------------
-
-        st.markdown(
-            "### 🎯 Entry Zone"
-        )
-
-        z1, z2 = st.columns(
-            2,
-            gap="small",
-        )
-
-        with z1:
-
-            st.metric(
-                "Zone Low",
-                f"₹{fmt(trade_plan['buy_zone_low'])}",
-            )
-
-        with z2:
-
-            st.metric(
-                "Zone High",
-                f"₹{fmt(trade_plan['buy_zone_high'])}",
-            )
-
-        # ----------------------------------------------------
-        # Risk reward
-        # ----------------------------------------------------
-
-        st.markdown(
-            "### ⚖️ Risk / Reward"
-        )
-
-        if trade_plan["risk"] > 0:
-
-            rr1 = (
-                trade_plan["reward1"]
-                / trade_plan["risk"]
-            )
-
-            rr2 = (
-                trade_plan["reward2"]
-                / trade_plan["risk"]
-            )
-
-            r1, r2 = st.columns(
-                2,
-                gap="small",
-            )
-
-            with r1:
-
-                st.metric(
-                    "Target 1 R:R",
-                    f"1 : {rr1:.2f}",
-                )
-
-            with r2:
-
-                st.metric(
-                    "Target 2 R:R",
-                    f"1 : {rr2:.2f}",
-                )
-
-        # ----------------------------------------------------
-        # Buy / sell conditions
-        # ----------------------------------------------------
-
-        st.markdown(
-            "### 🕐 When to Buy / Sell"
-        )
-
-        with st.container(
-            border=True
-        ):
-
-            st.write(
-                "🟢 **Entry condition:** "
-                + trade_plan[
-                    "entry_condition"
-                ]
-            )
-
-            st.write(
-                "🔴 **Exit condition:** "
-                + trade_plan[
-                    "exit_condition"
-                ]
-            )
-
-        # ----------------------------------------------------
-        # Strategy checklist
-        # ----------------------------------------------------
-
-        st.markdown(
-            "### ✅ Confirmation Checklist"
-        )
-
-        if strategy_mode == "Intraday":
-
-            checks = [
-                (
-                    "VWAP",
-                    current_price is not None
-                    and vwap is not None
-                    and current_price > vwap,
-                ),
-                (
-                    "Supertrend",
-                    current_price is not None
-                    and supertrend is not None
-                    and current_price > supertrend,
-                ),
-                (
-                    "RSI",
-                    rsi is not None
-                    and rsi >= 50,
-                ),
-                (
-                    "MACD",
-                    macd is not None
-                    and macd_signal is not None
-                    and macd > macd_signal,
-                ),
-                (
-                    "Volume",
-                    volume_ratio is not None
-                    and volume_ratio >= 1.5,
-                ),
-            ]
-
-        elif strategy_mode == "Swing":
-
-            checks = [
-                (
-                    "SMA Trend",
-                    sma20 is not None
-                    and sma50 is not None
-                    and sma20 > sma50,
-                ),
-                (
-                    "EMA Trend",
-                    ema20 is not None
-                    and ema50 is not None
-                    and ema20 > ema50,
-                ),
-                (
-                    "MACD",
-                    macd is not None
-                    and macd_signal is not None
-                    and macd > macd_signal,
-                ),
-                (
-                    "RSI",
-                    rsi is not None
-                    and rsi >= 50,
-                ),
-                (
-                    "Momentum",
-                    momentum is not None
-                    and momentum > 0,
-                ),
-            ]
-
-        else:
-
-            checks = [
-                (
-                    "SMA Trend",
-                    sma20 is not None
-                    and sma50 is not None
-                    and sma20 > sma50,
-                ),
-                (
-                    "EMA Trend",
-                    ema20 is not None
-                    and ema50 is not None
-                    and ema20 > ema50,
-                ),
-                (
-                    "Supertrend",
-                    current_price is not None
-                    and supertrend is not None
-                    and current_price > supertrend,
-                ),
-                (
-                    "MACD",
-                    macd is not None
-                    and macd_signal is not None
-                    and macd > macd_signal,
-                ),
-                (
-                    "Momentum",
-                    momentum is not None
-                    and momentum > 0,
-                ),
-            ]
-
-        for label, passed in checks:
-
-            if passed:
-
-                st.success(
-                    f"✓ {label}: Confirmed"
-                )
-
-            else:
-
-                st.warning(
-                    f"• {label}: Not confirmed"
-                )
-
-    with st.expander(
-        "ℹ️ How this strategy mode works"
-    ):
-
-        if strategy_mode == "Intraday":
-
-            st.write(
-                """
-                **Intraday**
-
-                Designed for shorter-term setups.
-
-                - VWAP receives higher importance.
-                - Supertrend confirms direction.
-                - RSI and MACD confirm momentum.
-                - Volume confirmation is preferred.
-                - ATR provides the stop-loss distance.
-                - Avoid chasing large candles.
-                """
-            )
-
-        elif strategy_mode == "Swing":
-
-            st.write(
-                """
-                **Swing**
-
-                Designed for multi-day positions.
-
-                - Moving-average structure receives more importance.
-                - EMA trend confirms momentum.
-                - MACD and RSI provide momentum confirmation.
-                - Wider ATR-based stop-loss is used.
-                - Targets are larger than intraday setups.
-                """
-            )
-
-        else:
-
-            st.write(
-                """
-                **Long Term**
-
-                Designed for broader trend positioning.
-
-                - SMA/EMA trend structure receives highest importance.
-                - Supertrend and momentum provide confirmation.
-                - VWAP has very little influence.
-                - Wider ATR-based risk allowance is used.
-                - Short-term fluctuations should receive less importance.
-                """
-            )
-
-
-# ============================================================
-# TAB 8 - INDICATOR GUIDE
-# ============================================================
-
-with tabs[7]:
-
-    st.subheader(
-        "📚 Technical Indicator Guide"
+    st.markdown(
+        "### 📊 Detailed Trade Levels"
     )
 
-    st.caption(
-        "Use this section to understand what each indicator "
-        "does and how it can be interpreted."
-    )
+    c1, c2, c3, c4 = st.columns(4)
 
-    guide_mapping = {
-
-        "SMA 20": "SMA",
-        "SMA 50": "SMA",
-
-        "EMA 20": "EMA",
-        "EMA 50": "EMA",
-
-        "Bollinger Bands": "Bollinger Bands",
-
-        "VWAP": "VWAP",
-
-        "Supertrend": "Supertrend",
-
-        "RSI": "RSI",
-
-        "MACD": "MACD",
-
-        "ATR": "ATR",
-
-        "Momentum": "Momentum",
-
-        "Volume": "Volume",
-
-        "Volume Ratio": "Volume Ratio",
-    }
-
-    for indicator in ALL_INDICATORS:
-
-        guide_key = guide_mapping.get(
-            indicator,
-            indicator,
+    with c1:
+        st.metric(
+            "Current Price",
+            fmt(current_price),
         )
 
-        with st.expander(
-            f"ℹ️ {indicator}"
-        ):
+    with c2:
+        st.metric(
+            "Zone Low",
+            fmt(
+                trade_plan["zone_low"]
+            ),
+        )
 
-            try:
+    with c3:
+        st.metric(
+            "Zone High",
+            fmt(
+                trade_plan["zone_high"]
+            ),
+        )
 
-                show_indicator_guide(
-                    st,
-                    guide_key,
-                )
+    with c4:
+        st.metric(
+            "Entry Trigger",
+            fmt(
+                trade_plan["entry"]
+            ),
+        )
 
-            except Exception:
+    c5, c6, c7 = st.columns(3)
 
-                st.write(
-                    get_indicator_tooltip(
-                        guide_key
-                    )
-                )
+    with c5:
+        st.metric(
+            "Stop Loss",
+            fmt(
+                trade_plan["stop_loss"]
+            ),
+        )
 
+    with c6:
+        st.metric(
+            "Target 1",
+            fmt(
+                trade_plan["target1"]
+            ),
+        )
 
-# ============================================================
-# RECENT MARKET DATA
-# ============================================================
+    with c7:
+        st.metric(
+            "Target 2",
+            fmt(
+                trade_plan["target2"]
+            ),
+        )
 
-st.divider()
+    st.markdown(
+        "### 📐 Risk Management"
+    )
 
-with st.expander(
-    "📋 Recent Market Data"
-):
+    r1, r2, r3 = st.columns(3)
 
-    display_columns = [
-        column
-        for column in [
-            "Open",
-            "High",
-            "Low",
-            "Close",
-            "Volume",
+    with r1:
+        st.metric(
+            "Direction",
+            trade_plan["direction"],
+        )
 
-            "SMA_20",
-            "SMA_50",
-
-            "EMA_20",
-            "EMA_50",
-
-            "RSI",
-
-            "MACD",
-            "MACD_Signal",
-            "MACD_Histogram",
-
-            "VWAP",
-            "Supertrend",
-
+    with r2:
+        st.metric(
             "ATR",
+            fmt(
+                trade_plan["atr"]
+            ),
+        )
 
-            "BB_Upper",
-            "BB_Middle",
-            "BB_Lower",
+    with r3:
+        st.metric(
+            "Target R:R",
+            f"1:{fmt(trade_plan['rr'], 1)}",
+        )
 
-            "Momentum",
-            "Volume_Ratio",
-        ]
-        if column in chart_df.columns
-    ]
+    st.markdown(
+        "### 📝 How to Execute"
+    )
 
-    if display_columns:
+    if signal_data["signal"] in [
+        "STRONG BUY",
+        "BUY",
+    ]:
 
-        recent = chart_df[
-            display_columns
-        ].tail(30)
+        st.markdown(
+            f"""
+            <div class="setup-box">
 
-        st.dataframe(
-            recent,
-            width="stretch",
-            height=450,
+            <b>🟢 BUY PLAN</b><br><br>
+
+            Current Price:
+            <b>{fmt(current_price)}</b><br>
+
+            Buy Zone:
+            <b>
+            {fmt(trade_plan["zone_low"])}
+            – {fmt(trade_plan["zone_high"])}
+            </b><br>
+
+            Entry Trigger:
+            <b>{fmt(trade_plan["entry"])}</b><br>
+
+            Stop Loss:
+            <b>{fmt(trade_plan["stop_loss"])}</b><br>
+
+            Target 1:
+            <b>{fmt(trade_plan["target1"])}</b><br>
+
+            Target 2:
+            <b>{fmt(trade_plan["target2"])}</b>
+
+            <br><br>
+
+            Enter only after price confirms the trigger.
+            Use the stop loss without widening it emotionally.
+            Consider booking partial profit at Target 1.
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    elif signal_data["signal"] in [
+        "STRONG SELL",
+        "SELL",
+    ]:
+
+        st.markdown(
+            f"""
+            <div class="setup-box">
+
+            <b>🔴 SELL / SHORT PLAN</b><br><br>
+
+            Current Price:
+            <b>{fmt(current_price)}</b><br>
+
+            Sell Zone:
+            <b>
+            {fmt(trade_plan["zone_low"])}
+            – {fmt(trade_plan["zone_high"])}
+            </b><br>
+
+            Sell Trigger:
+            <b>{fmt(trade_plan["entry"])}</b><br>
+
+            Stop Loss:
+            <b>{fmt(trade_plan["stop_loss"])}</b><br>
+
+            Target 1:
+            <b>{fmt(trade_plan["target1"])}</b><br>
+
+            Target 2:
+            <b>{fmt(trade_plan["target2"])}</b>
+
+            <br><br>
+
+            Enter only after downside confirmation.
+            Avoid shorting an already extended fall.
+            Use the stop loss without widening it.
+
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
     else:
 
-        st.info(
-            "No indicator data available."
+        st.markdown(
+            """
+            <div class="setup-box">
+
+            <b>🟡 WAIT / HOLD PLAN</b><br><br>
+
+            No high-confidence trade is currently detected.
+            Wait for stronger alignment between trend, momentum,
+            price action and volume before entering.
+
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
+    st.markdown(
+        "### 🔍 Confirmation"
+    )
+
+    st.info(
+        signal_data["confirmation"]
+    )
+
+    st.markdown(
+        "### 🧠 Recommendation Reasons"
+    )
+
+    for reason in signal_data["reasons"]:
+
+        st.markdown(
+            f"- {reason}"
+        )
+
+    if signal_data["warnings"]:
+
+        st.markdown(
+            "### ⚠️ Risk Warnings"
+        )
+
+        for warning in signal_data["warnings"]:
+
+            st.warning(
+                warning
+            )
+
 
 # ============================================================
-# FINAL DISCLAIMER
+# TAB 8 — INDICATOR GUIDE
 # ============================================================
 
-st.divider()
+with tabs[7]:
 
-st.warning(
-    """
-    ⚠️ **Technical-analysis disclaimer**
+    st.markdown(
+        "## 📘 Technical Indicator Guide"
+    )
 
-    Strong Buy / Buy / Hold / Sell / Strong Sell classifications
-    are rule-based technical signals generated from available
-    indicators. They are not guaranteed predictions of future
-    returns.
+    st.markdown(
+        """
+        Understand what each indicator means, how it is used,
+        and how it contributes to the technical recommendation.
+        """
+    )
 
-    Entry zones, stop losses and targets are reference levels
-    calculated from technical indicators and ATR. They should not
-    be treated as guaranteed buy or sell prices.
+    guide_text = {
 
-    Always validate the setup against current price action,
-    support/resistance, liquidity, broader market conditions,
-    news/events and your own risk-management rules.
+        "SMA 20":
+            "20-period Simple Moving Average. Useful for short-term trend direction.",
 
-    A technical score or recommendation does not guarantee profit.
-    """
+        "SMA 50":
+            "50-period Simple Moving Average. Useful for medium-term trend confirmation.",
+
+        "EMA 20":
+            "20-period Exponential Moving Average. Reacts faster to recent price changes.",
+
+        "EMA 50":
+            "50-period Exponential Moving Average. Useful for broader trend confirmation.",
+
+        "Bollinger Bands":
+            "Measures price volatility and identifies potentially extended price conditions.",
+
+        "VWAP":
+            "Volume Weighted Average Price. Especially useful for intraday price positioning.",
+
+        "Supertrend":
+            "Trend-following indicator used to identify bullish or bearish direction.",
+
+        "RSI":
+            "Relative Strength Index. Above 70 can indicate overbought conditions; below 30 can indicate oversold conditions.",
+
+        "MACD":
+            "Momentum and trend indicator. MACD above Signal generally supports bullish momentum.",
+
+        "ATR":
+            "Average True Range. Measures volatility and can help estimate stop-loss distance.",
+
+        "Momentum":
+            "Measures the rate of price movement. Positive momentum supports bullish conditions.",
+
+        "Volume":
+            "Shows trading activity. Higher-than-normal volume can strengthen price-move confirmation.",
+
+        "Volume Ratio":
+            "Compares current volume with average volume. Values above 1.5x indicate strong volume activity.",
+    }
+
+    for indicator in ALL_INDICATORS:
+
+        with st.expander(
+            f"📌 {indicator}",
+            expanded=False,
+        ):
+
+            try:
+
+                tooltip = get_indicator_tooltip(
+                    indicator
+                )
+
+                if tooltip:
+
+                    st.markdown(
+                        tooltip
+                    )
+
+                else:
+
+                    st.info(
+                        guide_text.get(
+                            indicator,
+                            "Technical indicator used for market analysis.",
+                        )
+                    )
+
+            except Exception:
+
+                st.info(
+                    guide_text.get(
+                        indicator,
+                        "Technical indicator used for market analysis.",
+                    )
+                )
+
+    try:
+
+        st.markdown(
+            "### 📚 Complete Indicator Guide"
+        )
+
+        show_indicator_guide()
+
+    except Exception:
+
+        pass
+
+
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.markdown("---")
+
+st.caption(
+    "⚠️ Technical analysis is probabilistic and is not a guarantee "
+    "of future returns. Use appropriate position sizing, risk management "
+    "and independent judgment. Entry, stop-loss and target levels are "
+    "algorithmic estimates based on technical indicators and ATR."
 )
