@@ -1,6 +1,23 @@
 # ============================================================
-# Technical Analysis Page
-# File: pages/03_📉_Technical_Analysis.py
+# pages/03_📉_Technical_Analysis.py
+#
+# Professional Technical Analysis Dashboard
+#
+# Features:
+#   - Responsive device-friendly layout
+#   - Heikin Ashi default
+#   - Candlestick / OHLC / Line options
+#   - Multiple indicators on same chart
+#   - Favorite 1 / Favorite 2 / Favorite 3
+#   - Intraday / Swing / Long Term strategy modes
+#   - Technical score
+#   - Strong Buy / Buy / Hold / Sell / Strong Sell
+#   - Buy zone
+#   - Buy trigger
+#   - Stop loss
+#   - Target 1 / Target 2
+#   - Sell / exit conditions
+#   - Indicator explanations
 # ============================================================
 
 import streamlit as st
@@ -25,13 +42,14 @@ from utils.indicator_guide import (
 
 
 # ============================================================
-# PAGE CONFIGURATION
+# PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
     page_title="Technical Analysis",
     page_icon="📉",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 
@@ -39,7 +57,7 @@ CURRENT_PAGE = "pages/03_📉_Technical_Analysis.py"
 
 
 # ============================================================
-# SESSION STATE
+# CONSTANTS
 # ============================================================
 
 DEFAULT_INDICATORS = [
@@ -52,6 +70,34 @@ DEFAULT_INDICATORS = [
     "Supertrend",
 ]
 
+OVERLAY_INDICATORS = [
+    "SMA 20",
+    "SMA 50",
+    "EMA 20",
+    "EMA 50",
+    "Bollinger Bands",
+    "VWAP",
+    "Supertrend",
+]
+
+PANEL_INDICATORS = [
+    "RSI",
+    "MACD",
+    "ATR",
+    "Momentum",
+    "Volume",
+    "Volume Ratio",
+]
+
+ALL_INDICATORS = (
+    OVERLAY_INDICATORS
+    + PANEL_INDICATORS
+)
+
+
+# ============================================================
+# SESSION STATE
+# ============================================================
 
 if "technical_favorite_1" not in st.session_state:
     st.session_state["technical_favorite_1"] = DEFAULT_INDICATORS.copy()
@@ -62,13 +108,22 @@ if "technical_favorite_2" not in st.session_state:
 if "technical_favorite_3" not in st.session_state:
     st.session_state["technical_favorite_3"] = []
 
+if "technical_selected_indicators" not in st.session_state:
+    st.session_state[
+        "technical_selected_indicators"
+    ] = DEFAULT_INDICATORS.copy()
 
-if "technical_graph_type" not in st.session_state:
-    st.session_state["technical_graph_type"] = "Heikin Ashi"
 
+# ============================================================
+# PAGE HEADER
+# ============================================================
 
-if "technical_period" not in st.session_state:
-    st.session_state["technical_period"] = "90 Days"
+page_header(
+    "📉 Technical Analysis",
+    CURRENT_PAGE,
+)
+
+show_page_navigation()
 
 
 # ============================================================
@@ -76,9 +131,7 @@ if "technical_period" not in st.session_state:
 # ============================================================
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Normalize dataframe column names.
-    """
+    """Normalize dataframe column names."""
 
     if df is None or df.empty:
         return pd.DataFrame()
@@ -86,21 +139,80 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     result = df.copy()
 
     result.columns = [
-        str(col).strip().replace(" ", "_")
+        str(col)
+        .strip()
+        .replace(" ", "_")
         for col in result.columns
     ]
 
     return result
 
 
-def prepare_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Convert known market/indicator columns to numeric.
-    """
+def prepare_datetime_index(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Ensure dataframe has datetime index."""
 
     result = df.copy()
 
-    numeric_columns = [
+    date_columns = [
+        "Date",
+        "Datetime",
+        "Timestamp",
+        "date",
+        "datetime",
+        "timestamp",
+    ]
+
+    date_column = None
+
+    for column in date_columns:
+        if column in result.columns:
+            date_column = column
+            break
+
+    if date_column:
+
+        result[date_column] = pd.to_datetime(
+            result[date_column],
+            errors="coerce",
+        )
+
+        result = result.dropna(
+            subset=[date_column]
+        )
+
+        result = result.set_index(
+            date_column
+        )
+
+    else:
+
+        try:
+
+            result.index = pd.to_datetime(
+                result.index,
+                errors="coerce",
+            )
+
+            result = result[
+                ~result.index.isna()
+            ]
+
+        except Exception:
+            pass
+
+    return result.sort_index()
+
+
+def prepare_numeric_columns(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Convert indicator columns to numeric."""
+
+    result = df.copy()
+
+    columns = [
         "Open",
         "High",
         "Low",
@@ -134,8 +246,10 @@ def prepare_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
         "Volume_Ratio",
     ]
 
-    for column in numeric_columns:
+    for column in columns:
+
         if column in result.columns:
+
             result[column] = pd.to_numeric(
                 result[column],
                 errors="coerce",
@@ -144,81 +258,14 @@ def prepare_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def prepare_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Ensure dataframe has a datetime index.
-    """
+def calculate_heikin_ashi(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Calculate Heikin Ashi candles."""
 
     result = df.copy()
 
-    possible_date_columns = [
-        "Date",
-        "Datetime",
-        "Timestamp",
-        "date",
-        "datetime",
-        "timestamp",
-    ]
-
-    date_column = None
-
-    for column in possible_date_columns:
-        if column in result.columns:
-            date_column = column
-            break
-
-    if date_column is not None:
-
-        result[date_column] = pd.to_datetime(
-            result[date_column],
-            errors="coerce",
-        )
-
-        result = result.dropna(
-            subset=[date_column]
-        )
-
-        result = result.set_index(
-            date_column
-        )
-
-    else:
-
-        try:
-            result.index = pd.to_datetime(
-                result.index,
-                errors="coerce",
-            )
-
-            result = result[
-                ~result.index.isna()
-            ]
-
-        except Exception:
-            pass
-
-    result = result.sort_index()
-
-    return result
-
-
-def calculate_heikin_ashi(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculate Heikin Ashi candles.
-
-    HA Close = (Open + High + Low + Close) / 4
-
-    HA Open:
-        first candle = (Open + Close) / 2
-        subsequent = (previous HA Open + previous HA Close) / 2
-
-    HA High = max(High, HA Open, HA Close)
-    HA Low  = min(Low, HA Open, HA Close)
-    """
-
-    result = df.copy()
-
-    required_columns = [
+    required = [
         "Open",
         "High",
         "Low",
@@ -227,18 +274,7 @@ def calculate_heikin_ashi(df: pd.DataFrame) -> pd.DataFrame:
 
     if not all(
         column in result.columns
-        for column in required_columns
-    ):
-        return result
-
-    if all(
-        column in result.columns
-        for column in [
-            "HA_Open",
-            "HA_High",
-            "HA_Low",
-            "HA_Close",
-        ]
+        for column in required
     ):
         return result
 
@@ -290,9 +326,6 @@ def filter_period(
     df: pd.DataFrame,
     period: str,
 ) -> pd.DataFrame:
-    """
-    Filter dataframe based on selected chart period.
-    """
 
     if df.empty:
         return df
@@ -300,7 +333,7 @@ def filter_period(
     if period == "All Data":
         return df
 
-    periods = {
+    days_map = {
         "30 Days": 30,
         "60 Days": 60,
         "90 Days": 90,
@@ -308,175 +341,987 @@ def filter_period(
         "1 Year": 365,
     }
 
-    days = periods.get(period)
+    days = days_map.get(period)
 
     if days is None:
         return df
 
-    latest_date = df.index.max()
+    latest = df.index.max()
 
-    start_date = latest_date - pd.Timedelta(
+    start = latest - pd.Timedelta(
         days=days
     )
 
     return df[
-        df.index >= start_date
+        df.index >= start
     ]
 
 
-def safe_last_value(
+def latest_value(
     df: pd.DataFrame,
     column: str,
 ):
-    """
-    Return latest non-null value.
-    """
+    """Return latest non-null value."""
 
     if column not in df.columns:
         return None
 
-    series = df[column].dropna()
+    values = df[column].dropna()
 
-    if series.empty:
+    if values.empty:
         return None
 
-    return series.iloc[-1]
+    return float(values.iloc[-1])
 
 
-def format_value(
+def fmt(
     value,
     decimals=2,
 ):
-    """
-    Format numeric indicator value.
-    """
+    """Format numeric value."""
 
     if value is None:
         return "N/A"
 
     try:
+
         if pd.isna(value):
             return "N/A"
 
-        return f"{float(value):.{decimals}f}"
+        return f"{float(value):,.{decimals}f}"
 
     except Exception:
         return "N/A"
 
 
-def get_indicator_key(indicator: str):
+def pct(
+    value,
+):
+    """Format percentage."""
+
+    if value is None:
+        return "N/A"
+
+    try:
+        return f"{float(value):.2f}%"
+    except Exception:
+        return "N/A"
+
+
+# ============================================================
+# RESPONSIVE INDICATOR SUMMARY
+# ============================================================
+
+def show_indicator_chips(
+    indicators,
+):
     """
-    Convert UI indicator name to dataframe column.
-    """
+    Responsive indicator list.
 
-    mapping = {
-
-        "SMA 20": "SMA_20",
-        "SMA 50": "SMA_50",
-
-        "EMA 20": "EMA_20",
-        "EMA 50": "EMA_50",
-
-        "VWAP": "VWAP",
-
-        "Supertrend": "Supertrend",
-
-        "ATR": "ATR",
-
-        "Momentum": "Momentum",
-
-        "Volume Ratio": "Volume_Ratio",
-
-    }
-
-    return mapping.get(indicator)
-
-
-def get_indicator_guide_key(
-    indicator: str,
-) -> str:
-    """
-    Map detailed indicator names to guide names.
+    We intentionally don't use Plotly's large legend.
+    This prevents indicator names from overlapping the
+    chart title on smaller screens.
     """
 
-    mapping = {
+    if not indicators:
+        st.caption("No overlay indicators selected.")
+        return
 
-        "SMA 20": "SMA",
-        "SMA 50": "SMA",
+    chips = []
 
-        "EMA 20": "EMA",
-        "EMA 50": "EMA",
+    for indicator in indicators:
 
-        "Bollinger Bands": "Bollinger Bands",
+        chips.append(
+            f"""
+            <span style="
+                display:inline-block;
+                padding:5px 10px;
+                margin:3px 4px 3px 0;
+                border-radius:14px;
+                background:rgba(120,120,120,0.12);
+                border:1px solid rgba(120,120,120,0.25);
+                font-size:13px;
+                white-space:nowrap;
+            ">
+                {indicator}
+            </span>
+            """
+        )
 
-        "VWAP": "VWAP",
-
-        "Supertrend": "Supertrend",
-
-        "RSI": "RSI",
-
-        "MACD": "MACD",
-
-        "ATR": "ATR",
-
-        "Momentum": "Momentum",
-
-        "Volume": "Volume",
-
-        "Volume Ratio": "Volume Ratio",
-
-    }
-
-    return mapping.get(
-        indicator,
-        indicator,
+    st.markdown(
+        "".join(chips),
+        unsafe_allow_html=True,
     )
 
 
 # ============================================================
-# INDICATOR LIST
+# TECHNICAL SCORING
 # ============================================================
 
-OVERLAY_INDICATORS = [
-    "SMA 20",
-    "SMA 50",
-    "EMA 20",
-    "EMA 50",
-    "Bollinger Bands",
-    "VWAP",
-    "Supertrend",
-]
+def calculate_technical_signal(
+    df: pd.DataFrame,
+):
+    """
+    Calculate a technical-analysis score.
 
-SEPARATE_PANEL_INDICATORS = [
-    "RSI",
-    "MACD",
-    "ATR",
-    "Momentum",
-    "Volume",
-    "Volume Ratio",
-]
+    This is a rule-based analytical score, not a
+    guaranteed probability of future returns.
+    """
 
+    if df.empty:
+        return {
+            "score": 50,
+            "signal": "HOLD",
+            "reasons": [],
+            "bullish_count": 0,
+            "bearish_count": 0,
+        }
 
-ALL_INDICATORS = (
-    OVERLAY_INDICATORS
-    + SEPARATE_PANEL_INDICATORS
-)
+    score = 50.0
+
+    reasons = []
+
+    bullish_count = 0
+    bearish_count = 0
+
+    close = latest_value(df, "Close")
+
+    # --------------------------------------------------------
+    # SMA
+    # --------------------------------------------------------
+
+    sma20 = latest_value(df, "SMA_20")
+    sma50 = latest_value(df, "SMA_50")
+
+    if close is not None and sma20 is not None:
+
+        if close > sma20:
+
+            score += 8
+            bullish_count += 1
+
+            reasons.append(
+                "Price is above SMA 20, "
+                "supporting short-term strength."
+            )
+
+        else:
+
+            score -= 8
+            bearish_count += 1
+
+            reasons.append(
+                "Price is below SMA 20, "
+                "indicating short-term weakness."
+            )
+
+    if (
+        sma20 is not None
+        and sma50 is not None
+    ):
+
+        if sma20 > sma50:
+
+            score += 10
+            bullish_count += 1
+
+            reasons.append(
+                "SMA 20 is above SMA 50, "
+                "supporting a bullish trend structure."
+            )
+
+        else:
+
+            score -= 10
+            bearish_count += 1
+
+            reasons.append(
+                "SMA 20 is below SMA 50, "
+                "indicating a weaker trend structure."
+            )
+
+    # --------------------------------------------------------
+    # EMA
+    # --------------------------------------------------------
+
+    ema20 = latest_value(df, "EMA_20")
+    ema50 = latest_value(df, "EMA_50")
+
+    if (
+        ema20 is not None
+        and ema50 is not None
+    ):
+
+        if ema20 > ema50:
+
+            score += 8
+            bullish_count += 1
+
+            reasons.append(
+                "EMA 20 is above EMA 50, "
+                "supporting positive momentum."
+            )
+
+        else:
+
+            score -= 8
+            bearish_count += 1
+
+            reasons.append(
+                "EMA 20 is below EMA 50, "
+                "indicating negative momentum."
+            )
+
+    # --------------------------------------------------------
+    # VWAP
+    # --------------------------------------------------------
+
+    vwap = latest_value(
+        df,
+        "VWAP",
+    )
+
+    if (
+        close is not None
+        and vwap is not None
+    ):
+
+        if close > vwap:
+
+            score += 8
+            bullish_count += 1
+
+            reasons.append(
+                "Price is above VWAP."
+            )
+
+        else:
+
+            score -= 8
+            bearish_count += 1
+
+            reasons.append(
+                "Price is below VWAP."
+            )
+
+    # --------------------------------------------------------
+    # SUPERTREND
+    # --------------------------------------------------------
+
+    supertrend = latest_value(
+        df,
+        "Supertrend",
+    )
+
+    if (
+        close is not None
+        and supertrend is not None
+    ):
+
+        if close > supertrend:
+
+            score += 10
+            bullish_count += 1
+
+            reasons.append(
+                "Price is above Supertrend, "
+                "supporting a bullish trend."
+            )
+
+        else:
+
+            score -= 10
+            bearish_count += 1
+
+            reasons.append(
+                "Price is below Supertrend, "
+                "supporting a bearish trend."
+            )
+
+    # --------------------------------------------------------
+    # RSI
+    # --------------------------------------------------------
+
+    rsi = latest_value(
+        df,
+        "RSI",
+    )
+
+    if rsi is not None:
+
+        if 50 <= rsi < 70:
+
+            score += 7
+            bullish_count += 1
+
+            reasons.append(
+                f"RSI is {rsi:.1f}, "
+                "showing positive momentum without "
+                "being extremely overbought."
+            )
+
+        elif rsi < 30:
+
+            score += 4
+            bullish_count += 1
+
+            reasons.append(
+                f"RSI is {rsi:.1f}, "
+                "indicating an oversold condition."
+            )
+
+        elif rsi >= 70:
+
+            score -= 4
+            bearish_count += 1
+
+            reasons.append(
+                f"RSI is {rsi:.1f}, "
+                "indicating an overbought condition."
+            )
+
+        else:
+
+            score -= 2
+
+    # --------------------------------------------------------
+    # MACD
+    # --------------------------------------------------------
+
+    macd = latest_value(
+        df,
+        "MACD",
+    )
+
+    macd_signal = latest_value(
+        df,
+        "MACD_Signal",
+    )
+
+    macd_hist = latest_value(
+        df,
+        "MACD_Histogram",
+    )
+
+    if (
+        macd is not None
+        and macd_signal is not None
+    ):
+
+        if macd > macd_signal:
+
+            score += 8
+            bullish_count += 1
+
+            reasons.append(
+                "MACD is above its signal line."
+            )
+
+        else:
+
+            score -= 8
+            bearish_count += 1
+
+            reasons.append(
+                "MACD is below its signal line."
+            )
+
+    if macd_hist is not None:
+
+        if macd_hist > 0:
+
+            score += 4
+
+        else:
+
+            score -= 4
+
+    # --------------------------------------------------------
+    # BOLLINGER BANDS
+    # --------------------------------------------------------
+
+    bb_middle = latest_value(
+        df,
+        "BB_Middle",
+    )
+
+    bb_upper = latest_value(
+        df,
+        "BB_Upper",
+    )
+
+    bb_lower = latest_value(
+        df,
+        "BB_Lower",
+    )
+
+    if (
+        close is not None
+        and bb_middle is not None
+    ):
+
+        if close > bb_middle:
+
+            score += 5
+            bullish_count += 1
+
+            reasons.append(
+                "Price is above the Bollinger middle band."
+            )
+
+        else:
+
+            score -= 5
+            bearish_count += 1
+
+            reasons.append(
+                "Price is below the Bollinger middle band."
+            )
+
+    # --------------------------------------------------------
+    # MOMENTUM
+    # --------------------------------------------------------
+
+    momentum = latest_value(
+        df,
+        "Momentum",
+    )
+
+    if momentum is not None:
+
+        if momentum > 0:
+
+            score += 5
+            bullish_count += 1
+
+            reasons.append(
+                "Momentum is positive."
+            )
+
+        else:
+
+            score -= 5
+            bearish_count += 1
+
+            reasons.append(
+                "Momentum is negative."
+            )
+
+    # --------------------------------------------------------
+    # VOLUME
+    # --------------------------------------------------------
+
+    volume_ratio = latest_value(
+        df,
+        "Volume_Ratio",
+    )
+
+    if volume_ratio is not None:
+
+        if volume_ratio >= 1.5:
+
+            if bullish_count >= bearish_count:
+
+                score += 5
+
+                reasons.append(
+                    f"Volume is elevated at "
+                    f"{volume_ratio:.2f}x the reference average."
+                )
+
+            else:
+
+                score -= 5
+
+                reasons.append(
+                    f"High volume at "
+                    f"{volume_ratio:.2f}x the reference average "
+                    "is accompanying bearish pressure."
+                )
+
+    # --------------------------------------------------------
+    # LIMIT SCORE
+    # --------------------------------------------------------
+
+    score = max(
+        0,
+        min(
+            100,
+            score,
+        ),
+    )
+
+    # --------------------------------------------------------
+    # SIGNAL
+    # --------------------------------------------------------
+
+    if score >= 75:
+
+        signal = "STRONG BUY"
+
+    elif score >= 60:
+
+        signal = "BUY"
+
+    elif score >= 45:
+
+        signal = "HOLD"
+
+    elif score >= 30:
+
+        signal = "SELL"
+
+    else:
+
+        signal = "STRONG SELL"
+
+    return {
+        "score": round(score, 1),
+        "signal": signal,
+        "reasons": reasons,
+        "bullish_count": bullish_count,
+        "bearish_count": bearish_count,
+    }
 
 
 # ============================================================
-# HEADER
+# TRADE PLAN
 # ============================================================
 
-page_header(
-    "📉 Technical Analysis",
-    CURRENT_PAGE,
-)
+def calculate_trade_plan(
+    df: pd.DataFrame,
+    timeframe: str,
+    signal_data: dict,
+):
+    """
+    Calculate a rule-based trade plan.
 
-show_page_navigation()
+    Intraday:
+        tighter ATR stop and targets
+
+    Swing:
+        wider volatility allowance
+
+    Long Term:
+        wider risk allowance
+    """
+
+    close = latest_value(
+        df,
+        "Close",
+    )
+
+    atr = latest_value(
+        df,
+        "ATR",
+    )
+
+    if close is None:
+        return None
+
+    # --------------------------------------------------------
+    # ATR FALLBACK
+    # --------------------------------------------------------
+
+    if (
+        atr is None
+        or atr <= 0
+    ):
+
+        fallback = {
+            "Intraday": 0.01,
+            "Swing": 0.03,
+            "Long Term": 0.06,
+        }
+
+        atr = close * fallback[
+            timeframe
+        ]
+
+    # --------------------------------------------------------
+    # TIMEFRAME PARAMETERS
+    # --------------------------------------------------------
+
+    settings = {
+
+        "Intraday": {
+            "stop_atr": 1.0,
+            "target1_rr": 1.5,
+            "target2_rr": 2.0,
+            "trigger_atr": 0.20,
+        },
+
+        "Swing": {
+            "stop_atr": 1.5,
+            "target1_rr": 2.0,
+            "target2_rr": 3.0,
+            "trigger_atr": 0.30,
+        },
+
+        "Long Term": {
+            "stop_atr": 2.5,
+            "target1_rr": 2.0,
+            "target2_rr": 3.5,
+            "trigger_atr": 0.50,
+        },
+    }
+
+    cfg = settings[
+        timeframe
+    ]
+
+    signal = signal_data[
+        "signal"
+    ]
+
+    # --------------------------------------------------------
+    # BULLISH PLAN
+    # --------------------------------------------------------
+
+    if signal in [
+        "STRONG BUY",
+        "BUY",
+    ]:
+
+        buy_trigger = (
+            close
+            + (
+                atr
+                * cfg["trigger_atr"]
+            )
+        )
+
+        buy_zone_low = max(
+            0,
+            close - (
+                atr
+                * 0.25
+            ),
+        )
+
+        buy_zone_high = (
+            close
+            + (
+                atr
+                * 0.10
+            )
+        )
+
+        risk = (
+            atr
+            * cfg["stop_atr"]
+        )
+
+        stop_loss = (
+            buy_trigger
+            - risk
+        )
+
+        target1 = (
+            buy_trigger
+            + (
+                risk
+                * cfg["target1_rr"]
+            )
+        )
+
+        target2 = (
+            buy_trigger
+            + (
+                risk
+                * cfg["target2_rr"]
+            )
+        )
+
+        return {
+            "direction": "LONG",
+            "entry": buy_trigger,
+            "buy_zone_low": buy_zone_low,
+            "buy_zone_high": buy_zone_high,
+            "stop_loss": stop_loss,
+            "target1": target1,
+            "target2": target2,
+            "risk": risk,
+            "reward1": target1 - buy_trigger,
+            "reward2": target2 - buy_trigger,
+            "entry_condition": (
+                f"Consider entry only if price sustains "
+                f"above ₹{buy_trigger:.2f} and bullish "
+                "confirmation remains intact."
+            ),
+            "exit_condition": (
+                f"Exit if price closes below the technical "
+                f"stop around ₹{stop_loss:.2f}, or if the "
+                f"bullish setup breaks."
+            ),
+        }
+
+    # --------------------------------------------------------
+    # BEARISH PLAN
+    # --------------------------------------------------------
+
+    if signal in [
+        "STRONG SELL",
+        "SELL",
+    ]:
+
+        sell_trigger = (
+            close
+            - (
+                atr
+                * cfg["trigger_atr"]
+            )
+        )
+
+        sell_zone_low = (
+            close
+            - (
+                atr
+                * 0.10
+            )
+        )
+
+        sell_zone_high = (
+            close
+            + (
+                atr
+                * 0.25
+            )
+        )
+
+        risk = (
+            atr
+            * cfg["stop_atr"]
+        )
+
+        stop_loss = (
+            sell_trigger
+            + risk
+        )
+
+        target1 = (
+            sell_trigger
+            - (
+                risk
+                * cfg["target1_rr"]
+            )
+        )
+
+        target2 = (
+            sell_trigger
+            - (
+                risk
+                * cfg["target2_rr"]
+            )
+        )
+
+        return {
+            "direction": "SHORT / EXIT",
+            "entry": sell_trigger,
+            "buy_zone_low": sell_zone_low,
+            "buy_zone_high": sell_zone_high,
+            "stop_loss": stop_loss,
+            "target1": target1,
+            "target2": target2,
+            "risk": risk,
+            "reward1": sell_trigger - target1,
+            "reward2": sell_trigger - target2,
+            "entry_condition": (
+                f"Bearish setup confirmation is required "
+                f"below ₹{sell_trigger:.2f}. "
+                "For delivery investors this is primarily "
+                "an exit/avoid-new-entry signal rather than "
+                "a short-selling instruction."
+            ),
+            "exit_condition": (
+                f"Exit/avoid the bearish trade if price "
+                f"moves above approximately ₹{stop_loss:.2f} "
+                "or the bearish structure reverses."
+            ),
+        }
+
+    # --------------------------------------------------------
+    # HOLD
+    # --------------------------------------------------------
+
+    return {
+        "direction": "WAIT",
+        "entry": close,
+        "buy_zone_low": close - atr * 0.50,
+        "buy_zone_high": close + atr * 0.50,
+        "stop_loss": close - atr,
+        "target1": close + atr * 1.5,
+        "target2": close + atr * 2.5,
+        "risk": atr,
+        "reward1": atr * 1.5,
+        "reward2": atr * 2.5,
+        "entry_condition": (
+            "Wait for a clearer bullish or bearish "
+            "confirmation before taking a fresh position."
+        ),
+        "exit_condition": (
+            "If already invested, review the position if "
+            "trend indicators weaken or the defined risk "
+            "level is breached."
+        ),
+    }
 
 
 # ============================================================
-# SELECTED STOCK
+# SIGNAL CARD
+# ============================================================
+
+def show_signal_card(
+    signal_data,
+    trade_plan,
+    timeframe,
+):
+    """Render professional signal summary."""
+
+    signal = signal_data["signal"]
+    score = signal_data["score"]
+
+    if signal == "STRONG BUY":
+
+        st.success(
+            f"🟢 STRONG BUY — Technical Score: {score:.0f}/100"
+        )
+
+    elif signal == "BUY":
+
+        st.success(
+            f"🟢 BUY — Technical Score: {score:.0f}/100"
+        )
+
+    elif signal == "HOLD":
+
+        st.warning(
+            f"🟡 HOLD — Technical Score: {score:.0f}/100"
+        )
+
+    elif signal == "SELL":
+
+        st.warning(
+            f"🟠 SELL — Technical Score: {score:.0f}/100"
+        )
+
+    else:
+
+        st.error(
+            f"🔴 STRONG SELL — Technical Score: {score:.0f}/100"
+        )
+
+    # --------------------------------------------------------
+    # Summary
+    # --------------------------------------------------------
+
+    st.caption(
+        f"Strategy timeframe: **{timeframe}**"
+    )
+
+    if trade_plan is None:
+        return
+
+    # --------------------------------------------------------
+    # Metrics
+    # --------------------------------------------------------
+
+    c1, c2, c3, c4, c5 = st.columns(
+        5,
+        gap="small",
+    )
+
+    with c1:
+
+        st.metric(
+            "Buy / Trigger",
+            f"₹{fmt(trade_plan['entry'])}",
+        )
+
+    with c2:
+
+        st.metric(
+            "Stop Loss",
+            f"₹{fmt(trade_plan['stop_loss'])}",
+        )
+
+    with c3:
+
+        st.metric(
+            "Target 1",
+            f"₹{fmt(trade_plan['target1'])}",
+        )
+
+    with c4:
+
+        st.metric(
+            "Target 2",
+            f"₹{fmt(trade_plan['target2'])}",
+        )
+
+    with c5:
+
+        risk_pct = (
+            trade_plan["risk"]
+            / trade_plan["entry"]
+            * 100
+        )
+
+        st.metric(
+            "Risk",
+            f"{risk_pct:.2f}%",
+        )
+
+    # --------------------------------------------------------
+    # Buy Zone
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 🎯 Entry Zone"
+    )
+
+    z1, z2 = st.columns(
+        2,
+        gap="small",
+    )
+
+    with z1:
+
+        st.metric(
+            "Suggested Zone - Low",
+            f"₹{fmt(trade_plan['buy_zone_low'])}",
+        )
+
+    with z2:
+
+        st.metric(
+            "Suggested Zone - High",
+            f"₹{fmt(trade_plan['buy_zone_high'])}",
+        )
+
+    # --------------------------------------------------------
+    # When to buy / sell
+    # --------------------------------------------------------
+
+    with st.container(border=True):
+
+        st.markdown(
+            "### 🕐 When to Buy / Exit"
+        )
+
+        st.write(
+            "🟢 **Entry condition:** "
+            + trade_plan["entry_condition"]
+        )
+
+        st.write(
+            "🔴 **Exit / Sell condition:** "
+            + trade_plan["exit_condition"]
+        )
+
+
+# ============================================================
+# LOAD STOCK
 # ============================================================
 
 stock = get_selected_stock()
@@ -490,10 +1335,6 @@ if not stock:
 
     st.stop()
 
-
-# ============================================================
-# LOAD STOCK DATA
-# ============================================================
 
 with st.spinner(
     f"Loading technical analysis for {stock}..."
@@ -515,7 +1356,7 @@ with st.spinner(
 if data is None:
 
     st.warning(
-        f"No data available for {stock}."
+        "No data returned for the selected stock."
     )
 
     st.stop()
@@ -524,12 +1365,13 @@ if data is None:
 if not isinstance(data, pd.DataFrame):
 
     try:
+
         data = pd.DataFrame(data)
 
     except Exception as exc:
 
         st.error(
-            f"Unable to convert stock data to dataframe: {exc}"
+            f"Unable to convert stock data: {exc}"
         )
 
         st.stop()
@@ -538,7 +1380,7 @@ if not isinstance(data, pd.DataFrame):
 if data.empty:
 
     st.warning(
-        f"No market data available for {stock}."
+        "No market data is available."
     )
 
     st.stop()
@@ -557,7 +1399,7 @@ df = prepare_numeric_columns(df)
 df = calculate_heikin_ashi(df)
 
 
-required_price_columns = [
+required_columns = [
     "Open",
     "High",
     "Low",
@@ -565,117 +1407,102 @@ required_price_columns = [
 ]
 
 
-missing_price_columns = [
+missing = [
     column
-    for column in required_price_columns
+    for column in required_columns
     if column not in df.columns
 ]
 
 
-if missing_price_columns:
+if missing:
 
     st.error(
-        "Required OHLC columns are missing: "
-        + ", ".join(missing_price_columns)
+        "Missing required market columns: "
+        + ", ".join(missing)
     )
 
     st.stop()
 
 
 # ============================================================
-# CURRENT STOCK INFORMATION
+# CURRENT PRICE
 # ============================================================
 
-latest_close = safe_last_value(
+current_price = latest_value(
     df,
     "Close",
 )
 
-latest_volume = safe_last_value(
+volume = latest_value(
     df,
     "Volume",
 )
 
 
+# ============================================================
+# STRATEGY MODE
+# ============================================================
+
 st.subheader(
-    f"📊 {stock.replace('.NS', '')} — Technical Chart"
+    "🎯 Trading / Investment Mode"
 )
 
 
-info1, info2, info3 = st.columns(3)
-
-
-with info1:
-
-    st.metric(
-        "Latest Close",
-        (
-            f"₹{format_value(latest_close)}"
-            if latest_close is not None
-            else "N/A"
-        ),
-    )
-
-
-with info2:
-
-    if latest_volume is not None:
-
-        st.metric(
-            "Volume",
-            f"{latest_volume:,.0f}",
-        )
-
-    else:
-
-        st.metric(
-            "Volume",
-            "N/A",
-        )
-
-
-with info3:
-
-    st.metric(
-        "Data Points",
-        f"{len(df):,}",
-    )
+strategy_mode = st.radio(
+    "Select analysis timeframe",
+    [
+        "Intraday",
+        "Swing",
+        "Long Term",
+    ],
+    horizontal=True,
+    index=0,
+    key="technical_strategy_mode",
+    help=(
+        "Intraday focuses on shorter-term setups, "
+        "Swing focuses on multi-day setups, and "
+        "Long Term focuses on broader trend positioning."
+    ),
+)
 
 
 # ============================================================
 # CHART SETTINGS
 # ============================================================
 
-st.subheader("⚙️ Chart Settings")
-
-
-settings_col1, settings_col2 = st.columns(
-    [1, 2]
+st.subheader(
+    "⚙️ Chart Settings"
 )
 
 
-with settings_col1:
+settings1, settings2 = st.columns(
+    2,
+    gap="medium",
+)
+
+
+with settings1:
 
     graph_type = st.radio(
-        "Graph / Candle Pattern",
+        "Price Pattern",
         [
             "Heikin Ashi",
             "Candlestick",
             "OHLC",
             "Line",
         ],
+        horizontal=True,
         index=0,
-        horizontal=False,
         key="technical_graph_type",
         help=(
-            "Heikin Ashi is the default because it "
-            "helps visualize the underlying trend more clearly. "
-            "Candlestick and OHLC show actual market prices."
+            "Heikin Ashi is the default. "
+            "Candlestick and OHLC show actual market "
+            "OHLC prices."
         ),
     )
 
 
-with settings_col2:
+with settings2:
 
     period = st.selectbox(
         "Chart Period",
@@ -707,124 +1534,78 @@ st.subheader(
 )
 
 
-favorite_col1, favorite_col2, favorite_col3 = st.columns(
-    3
+fav1, fav2, fav3 = st.columns(
+    3,
+    gap="small",
 )
 
 
-with favorite_col1:
+with fav1:
 
     if st.button(
         "⭐ Load Favorite 1",
         width="stretch",
-        key="load_favorite_1",
     ):
 
-        saved = st.session_state.get(
-            "technical_favorite_1",
-            [],
-        )
+        st.session_state[
+            "technical_selected_indicators"
+        ] = st.session_state[
+            "technical_favorite_1"
+        ].copy()
 
-        if saved:
-
-            st.session_state[
-                "technical_selected_indicators"
-            ] = saved.copy()
-
-            st.rerun()
-
-        else:
-
-            st.info(
-                "Favorite 1 is empty."
-            )
+        st.rerun()
 
 
-with favorite_col2:
+with fav2:
 
     if st.button(
         "⭐ Load Favorite 2",
         width="stretch",
-        key="load_favorite_2",
     ):
 
-        saved = st.session_state.get(
-            "technical_favorite_2",
-            [],
-        )
+        st.session_state[
+            "technical_selected_indicators"
+        ] = st.session_state[
+            "technical_favorite_2"
+        ].copy()
 
-        if saved:
-
-            st.session_state[
-                "technical_selected_indicators"
-            ] = saved.copy()
-
-            st.rerun()
-
-        else:
-
-            st.info(
-                "Favorite 2 is empty."
-            )
+        st.rerun()
 
 
-with favorite_col3:
+with fav3:
 
     if st.button(
         "⭐ Load Favorite 3",
         width="stretch",
-        key="load_favorite_3",
     ):
 
-        saved = st.session_state.get(
-            "technical_favorite_3",
-            [],
-        )
+        st.session_state[
+            "technical_selected_indicators"
+        ] = st.session_state[
+            "technical_favorite_3"
+        ].copy()
 
-        if saved:
-
-            st.session_state[
-                "technical_selected_indicators"
-            ] = saved.copy()
-
-            st.rerun()
-
-        else:
-
-            st.info(
-                "Favorite 3 is empty."
-            )
+        st.rerun()
 
 
 # ============================================================
-# MULTIPLE INDICATOR SELECTION
+# MULTI INDICATOR SELECTION
 # ============================================================
 
 st.subheader(
-    "📌 Select Multiple Indicators"
+    "📌 Multiple Technical Indicators"
 )
 
 
-if "technical_selected_indicators" not in st.session_state:
-
-    st.session_state[
-        "technical_selected_indicators"
-    ] = DEFAULT_INDICATORS.copy()
-
-
 selected_indicators = st.multiselect(
-    "Indicators to display",
+    "Select indicators",
     options=ALL_INDICATORS,
-    default=st.session_state[
-        "technical_selected_indicators"
-    ],
     key="technical_selected_indicators",
-    format_func=lambda indicator: indicator,
     help=(
-        "You can select multiple indicators. "
-        "Overlay indicators are drawn directly on the price chart. "
-        "RSI, MACD, ATR, Momentum and Volume can be displayed "
-        "in separate panels."
+        "Select multiple indicators. "
+        "Overlay indicators appear on the price chart. "
+        "Oscillators and volume indicators appear in "
+        "their own panels."
     ),
 )
 
@@ -833,22 +1614,17 @@ selected_indicators = st.multiselect(
 # SAVE FAVORITES
 # ============================================================
 
-st.markdown(
-    "### 💾 Save Current Indicator Selection"
+save1, save2, save3 = st.columns(
+    3,
+    gap="small",
 )
 
 
-save_col1, save_col2, save_col3 = st.columns(
-    3
-)
-
-
-with save_col1:
+with save1:
 
     if st.button(
         "💾 Save as Favorite 1",
         width="stretch",
-        key="save_favorite_1",
     ):
 
         st.session_state[
@@ -856,16 +1632,15 @@ with save_col1:
         ] = selected_indicators.copy()
 
         st.success(
-            "Saved to Favorite 1."
+            "Favorite 1 saved."
         )
 
 
-with save_col2:
+with save2:
 
     if st.button(
         "💾 Save as Favorite 2",
         width="stretch",
-        key="save_favorite_2",
     ):
 
         st.session_state[
@@ -873,16 +1648,15 @@ with save_col2:
         ] = selected_indicators.copy()
 
         st.success(
-            "Saved to Favorite 2."
+            "Favorite 2 saved."
         )
 
 
-with save_col3:
+with save3:
 
     if st.button(
         "💾 Save as Favorite 3",
         width="stretch",
-        key="save_favorite_3",
     ):
 
         st.session_state[
@@ -890,72 +1664,169 @@ with save_col3:
         ] = selected_indicators.copy()
 
         st.success(
-            "Saved to Favorite 3."
+            "Favorite 3 saved."
         )
 
 
 # ============================================================
-# DISPLAY SELECTED INDICATORS
+# RESPONSIVE SELECTED INDICATORS
 # ============================================================
 
-if selected_indicators:
+st.markdown(
+    "#### Selected Indicators"
+)
 
-    st.caption(
-        "Selected: "
-        + " • ".join(selected_indicators)
+show_indicator_chips(
+    selected_indicators
+)
+
+
+# ============================================================
+# TECHNICAL SIGNAL
+# ============================================================
+
+signal_data = calculate_technical_signal(
+    chart_df
+)
+
+trade_plan = calculate_trade_plan(
+    chart_df,
+    strategy_mode,
+    signal_data,
+)
+
+
+st.subheader(
+    "🤖 Technical Trading Signal"
+)
+
+
+show_signal_card(
+    signal_data,
+    trade_plan,
+    strategy_mode,
+)
+
+
+# ============================================================
+# REASONS
+# ============================================================
+
+st.markdown(
+    "### 🔎 Why this signal?"
+)
+
+
+reasons = signal_data.get(
+    "reasons",
+    [],
+)
+
+
+if reasons:
+
+    reason_container = st.container(
+        border=True
     )
+
+    with reason_container:
+
+        for reason in reasons:
+
+            st.write(
+                "• " + reason
+            )
 
 else:
 
     st.info(
-        "No indicators selected. The price chart will still be displayed."
+        "Not enough indicator information "
+        "to explain the signal."
     )
 
 
 # ============================================================
-# PANEL OPTIONS
+# BULLISH / BEARISH COUNT
+# ============================================================
+
+b1, b2, b3 = st.columns(
+    3,
+    gap="small",
+)
+
+
+with b1:
+
+    st.metric(
+        "Technical Score",
+        f"{signal_data['score']:.0f}/100",
+    )
+
+
+with b2:
+
+    st.metric(
+        "Bullish Factors",
+        signal_data[
+            "bullish_count"
+        ],
+    )
+
+
+with b3:
+
+    st.metric(
+        "Bearish Factors",
+        signal_data[
+            "bearish_count"
+        ],
+    )
+
+
+# ============================================================
+# ADDITIONAL PANEL OPTIONS
 # ============================================================
 
 st.subheader(
-    "📊 Additional Chart Panels"
+    "📊 Chart Panels"
 )
 
 
-panel_col1, panel_col2, panel_col3 = st.columns(
-    3
+panel1, panel2, panel3 = st.columns(
+    3,
+    gap="small",
 )
 
 
-with panel_col1:
+with panel1:
 
     show_rsi = st.checkbox(
-        "Show RSI Panel",
+        "RSI",
         value=("RSI" in selected_indicators),
+        key="show_rsi_panel",
         help=get_indicator_tooltip("RSI"),
     )
 
 
-with panel_col2:
+with panel2:
 
     show_macd = st.checkbox(
-        "Show MACD Panel",
+        "MACD",
         value=("MACD" in selected_indicators),
+        key="show_macd_panel",
         help=get_indicator_tooltip("MACD"),
     )
 
 
-with panel_col3:
+with panel3:
 
     show_volume = st.checkbox(
-        "Show Volume Panel",
+        "Volume",
         value=("Volume" in selected_indicators),
+        key="show_volume_panel",
         help=get_indicator_tooltip("Volume"),
     )
 
-
-# ============================================================
-# DETERMINE PANELS
-# ============================================================
 
 show_atr = (
     "ATR" in selected_indicators
@@ -966,12 +1837,13 @@ show_momentum = (
 )
 
 show_volume_ratio = (
-    "Volume Ratio" in selected_indicators
+    "Volume Ratio"
+    in selected_indicators
 )
 
 
 # ============================================================
-# BUILD SUBPLOT STRUCTURE
+# PANEL LIST
 # ============================================================
 
 panel_names = [
@@ -1006,35 +1878,34 @@ if show_volume_ratio:
 row_count = len(panel_names)
 
 
-row_heights = [
-    0.50
-]
+# ============================================================
+# ROW HEIGHTS
+# ============================================================
 
+if row_count == 1:
 
-if row_count > 1:
+    row_heights = [1.0]
 
-    remaining_height = 0.50 / (
+else:
+
+    row_heights = [
+        0.50
+    ]
+
+    remaining = 0.50 / (
         row_count - 1
     )
 
     row_heights += [
-        remaining_height
+        remaining
     ] * (
         row_count - 1
     )
 
 
-subplot_specs = [
-    [{"secondary_y": False}]
-]
-
-
-for _ in range(1, row_count):
-
-    subplot_specs.append(
-        [{"secondary_y": False}]
-    )
-
+# ============================================================
+# SUBPLOTS
+# ============================================================
 
 fig = make_subplots(
     rows=row_count,
@@ -1042,7 +1913,6 @@ fig = make_subplots(
     shared_xaxes=True,
     vertical_spacing=0.025,
     row_heights=row_heights,
-    specs=subplot_specs,
     subplot_titles=panel_names,
 )
 
@@ -1051,48 +1921,21 @@ fig = make_subplots(
 # PRICE CHART
 # ============================================================
 
-price_row = 1
-
-
 if graph_type == "Heikin Ashi":
 
-    if all(
-        column in chart_df.columns
-        for column in [
-            "HA_Open",
-            "HA_High",
-            "HA_Low",
-            "HA_Close",
-        ]
-    ):
-
-        fig.add_trace(
-            go.Candlestick(
-                x=chart_df.index,
-                open=chart_df["HA_Open"],
-                high=chart_df["HA_High"],
-                low=chart_df["HA_Low"],
-                close=chart_df["HA_Close"],
-                name="Heikin Ashi",
-            ),
-            row=price_row,
-            col=1,
-        )
-
-    else:
-
-        fig.add_trace(
-            go.Candlestick(
-                x=chart_df.index,
-                open=chart_df["Open"],
-                high=chart_df["High"],
-                low=chart_df["Low"],
-                close=chart_df["Close"],
-                name="Candlestick",
-            ),
-            row=price_row,
-            col=1,
-        )
+    fig.add_trace(
+        go.Candlestick(
+            x=chart_df.index,
+            open=chart_df["HA_Open"],
+            high=chart_df["HA_High"],
+            low=chart_df["HA_Low"],
+            close=chart_df["HA_Close"],
+            name="Heikin Ashi",
+            showlegend=False,
+        ),
+        row=1,
+        col=1,
+    )
 
 
 elif graph_type == "Candlestick":
@@ -1105,8 +1948,9 @@ elif graph_type == "Candlestick":
             low=chart_df["Low"],
             close=chart_df["Close"],
             name="Candlestick",
+            showlegend=False,
         ),
-        row=price_row,
+        row=1,
         col=1,
     )
 
@@ -1121,8 +1965,9 @@ elif graph_type == "OHLC":
             low=chart_df["Low"],
             close=chart_df["Close"],
             name="OHLC",
+            showlegend=False,
         ),
-        row=price_row,
+        row=1,
         col=1,
     )
 
@@ -1134,165 +1979,113 @@ else:
             x=chart_df.index,
             y=chart_df["Close"],
             mode="lines",
-            name="Close Price",
+            name="Close",
+            showlegend=False,
         ),
-        row=price_row,
+        row=1,
         col=1,
     )
 
 
 # ============================================================
-# PRICE OVERLAY INDICATORS
+# OVERLAY INDICATORS
 # ============================================================
+
+def add_line(
+    column,
+    name,
+    row=1,
+):
+
+    if column not in chart_df.columns:
+        return
+
+    fig.add_trace(
+        go.Scatter(
+            x=chart_df.index,
+            y=chart_df[column],
+            mode="lines",
+            name=name,
+            showlegend=False,
+        ),
+        row=row,
+        col=1,
+    )
+
 
 for indicator in selected_indicators:
 
     if indicator == "SMA 20":
 
-        if "SMA_20" in chart_df.columns:
-
-            fig.add_trace(
-                go.Scatter(
-                    x=chart_df.index,
-                    y=chart_df["SMA_20"],
-                    mode="lines",
-                    name="SMA 20",
-                ),
-                row=price_row,
-                col=1,
-            )
+        add_line(
+            "SMA_20",
+            "SMA 20",
+        )
 
 
     elif indicator == "SMA 50":
 
-        if "SMA_50" in chart_df.columns:
-
-            fig.add_trace(
-                go.Scatter(
-                    x=chart_df.index,
-                    y=chart_df["SMA_50"],
-                    mode="lines",
-                    name="SMA 50",
-                ),
-                row=price_row,
-                col=1,
-            )
+        add_line(
+            "SMA_50",
+            "SMA 50",
+        )
 
 
     elif indicator == "EMA 20":
 
-        if "EMA_20" in chart_df.columns:
-
-            fig.add_trace(
-                go.Scatter(
-                    x=chart_df.index,
-                    y=chart_df["EMA_20"],
-                    mode="lines",
-                    name="EMA 20",
-                ),
-                row=price_row,
-                col=1,
-            )
+        add_line(
+            "EMA_20",
+            "EMA 20",
+        )
 
 
     elif indicator == "EMA 50":
 
-        if "EMA_50" in chart_df.columns:
-
-            fig.add_trace(
-                go.Scatter(
-                    x=chart_df.index,
-                    y=chart_df["EMA_50"],
-                    mode="lines",
-                    name="EMA 50",
-                ),
-                row=price_row,
-                col=1,
-            )
-
-
-    elif indicator == "Bollinger Bands":
-
-        if all(
-            column in chart_df.columns
-            for column in [
-                "BB_Upper",
-                "BB_Middle",
-                "BB_Lower",
-            ]
-        ):
-
-            fig.add_trace(
-                go.Scatter(
-                    x=chart_df.index,
-                    y=chart_df["BB_Upper"],
-                    mode="lines",
-                    name="BB Upper",
-                ),
-                row=price_row,
-                col=1,
-            )
-
-            fig.add_trace(
-                go.Scatter(
-                    x=chart_df.index,
-                    y=chart_df["BB_Middle"],
-                    mode="lines",
-                    name="BB Middle",
-                ),
-                row=price_row,
-                col=1,
-            )
-
-            fig.add_trace(
-                go.Scatter(
-                    x=chart_df.index,
-                    y=chart_df["BB_Lower"],
-                    mode="lines",
-                    name="BB Lower",
-                ),
-                row=price_row,
-                col=1,
-            )
+        add_line(
+            "EMA_50",
+            "EMA 50",
+        )
 
 
     elif indicator == "VWAP":
 
-        if "VWAP" in chart_df.columns:
-
-            fig.add_trace(
-                go.Scatter(
-                    x=chart_df.index,
-                    y=chart_df["VWAP"],
-                    mode="lines",
-                    name="VWAP",
-                ),
-                row=price_row,
-                col=1,
-            )
+        add_line(
+            "VWAP",
+            "VWAP",
+        )
 
 
     elif indicator == "Supertrend":
 
-        if "Supertrend" in chart_df.columns:
+        add_line(
+            "Supertrend",
+            "Supertrend",
+        )
 
-            fig.add_trace(
-                go.Scatter(
-                    x=chart_df.index,
-                    y=chart_df["Supertrend"],
-                    mode="lines",
-                    name="Supertrend",
-                ),
-                row=price_row,
-                col=1,
-            )
+
+    elif indicator == "Bollinger Bands":
+
+        add_line(
+            "BB_Upper",
+            "BB Upper",
+        )
+
+        add_line(
+            "BB_Middle",
+            "BB Middle",
+        )
+
+        add_line(
+            "BB_Lower",
+            "BB Lower",
+        )
 
 
 # ============================================================
 # SECONDARY PANELS
 # ============================================================
 
-current_row = 1
+row = 1
 
 
 # ------------------------------------------------------------
@@ -1301,7 +2094,7 @@ current_row = 1
 
 if show_rsi:
 
-    current_row += 1
+    row += 1
 
     if "RSI" in chart_df.columns:
 
@@ -1311,36 +2104,38 @@ if show_rsi:
                 y=chart_df["RSI"],
                 mode="lines",
                 name="RSI",
+                showlegend=False,
             ),
-            row=current_row,
+            row=row,
             col=1,
         )
 
         fig.add_hline(
             y=70,
             line_dash="dash",
-            row=current_row,
-            col=1,
-        )
-
-        fig.add_hline(
-            y=30,
-            line_dash="dash",
-            row=current_row,
+            row=row,
             col=1,
         )
 
         fig.add_hline(
             y=50,
             line_dash="dot",
-            row=current_row,
+            row=row,
+            col=1,
+        )
+
+        fig.add_hline(
+            y=30,
+            line_dash="dash",
+            row=row,
             col=1,
         )
 
         fig.update_yaxes(
-            title_text="RSI",
             range=[0, 100],
-            row=current_row,
+            title_text="RSI",
+            automargin=True,
+            row=row,
             col=1,
         )
 
@@ -1351,7 +2146,7 @@ if show_rsi:
 
 if show_macd:
 
-    current_row += 1
+    row += 1
 
     if "MACD" in chart_df.columns:
 
@@ -1361,8 +2156,9 @@ if show_macd:
                 y=chart_df["MACD"],
                 mode="lines",
                 name="MACD",
+                showlegend=False,
             ),
-            row=current_row,
+            row=row,
             col=1,
         )
 
@@ -1374,9 +2170,10 @@ if show_macd:
                 x=chart_df.index,
                 y=chart_df["MACD_Signal"],
                 mode="lines",
-                name="MACD Signal",
+                name="Signal",
+                showlegend=False,
             ),
-            row=current_row,
+            row=row,
             col=1,
         )
 
@@ -1387,9 +2184,10 @@ if show_macd:
             go.Bar(
                 x=chart_df.index,
                 y=chart_df["MACD_Histogram"],
-                name="MACD Histogram",
+                name="Histogram",
+                showlegend=False,
             ),
-            row=current_row,
+            row=row,
             col=1,
         )
 
@@ -1397,13 +2195,15 @@ if show_macd:
     fig.add_hline(
         y=0,
         line_dash="dot",
-        row=current_row,
+        row=row,
         col=1,
     )
 
+
     fig.update_yaxes(
         title_text="MACD",
-        row=current_row,
+        automargin=True,
+        row=row,
         col=1,
     )
 
@@ -1414,7 +2214,7 @@ if show_macd:
 
 if show_atr:
 
-    current_row += 1
+    row += 1
 
     if "ATR" in chart_df.columns:
 
@@ -1424,14 +2224,16 @@ if show_atr:
                 y=chart_df["ATR"],
                 mode="lines",
                 name="ATR",
+                showlegend=False,
             ),
-            row=current_row,
+            row=row,
             col=1,
         )
 
     fig.update_yaxes(
         title_text="ATR",
-        row=current_row,
+        automargin=True,
+        row=row,
         col=1,
     )
 
@@ -1442,7 +2244,7 @@ if show_atr:
 
 if show_momentum:
 
-    current_row += 1
+    row += 1
 
     if "Momentum" in chart_df.columns:
 
@@ -1452,21 +2254,23 @@ if show_momentum:
                 y=chart_df["Momentum"],
                 mode="lines",
                 name="Momentum",
+                showlegend=False,
             ),
-            row=current_row,
+            row=row,
             col=1,
         )
 
     fig.add_hline(
         y=0,
         line_dash="dot",
-        row=current_row,
+        row=row,
         col=1,
     )
 
     fig.update_yaxes(
         title_text="Momentum",
-        row=current_row,
+        automargin=True,
+        row=row,
         col=1,
     )
 
@@ -1477,7 +2281,7 @@ if show_momentum:
 
 if show_volume:
 
-    current_row += 1
+    row += 1
 
     if "Volume" in chart_df.columns:
 
@@ -1486,14 +2290,16 @@ if show_volume:
                 x=chart_df.index,
                 y=chart_df["Volume"],
                 name="Volume",
+                showlegend=False,
             ),
-            row=current_row,
+            row=row,
             col=1,
         )
 
     fig.update_yaxes(
         title_text="Volume",
-        row=current_row,
+        automargin=True,
+        row=row,
         col=1,
     )
 
@@ -1504,7 +2310,7 @@ if show_volume:
 
 if show_volume_ratio:
 
-    current_row += 1
+    row += 1
 
     if "Volume_Ratio" in chart_df.columns:
 
@@ -1514,68 +2320,98 @@ if show_volume_ratio:
                 y=chart_df["Volume_Ratio"],
                 mode="lines",
                 name="Volume Ratio",
+                showlegend=False,
             ),
-            row=current_row,
+            row=row,
             col=1,
         )
 
     fig.add_hline(
         y=1,
         line_dash="dot",
-        row=current_row,
+        row=row,
         col=1,
     )
 
     fig.update_yaxes(
         title_text="Volume Ratio",
-        row=current_row,
+        automargin=True,
+        row=row,
         col=1,
     )
 
 
 # ============================================================
-# CHART FORMATTING
+# PROFESSIONAL RESPONSIVE CHART LAYOUT
 # ============================================================
 
+# Important:
+# We intentionally hide Plotly's large legend.
+# The responsive indicator chips above the chart replace it.
+
+chart_height = max(
+    650,
+    460 + (
+        row_count - 1
+    ) * 190,
+)
+
+
 fig.update_layout(
-    title=(
-        f"{stock.replace('.NS', '')} "
-        f"Technical Analysis — {graph_type}"
-    ),
-    height=max(
-        750,
-        500 + (row_count - 1) * 220,
-    ),
+    autosize=True,
+
+    height=chart_height,
+
+    showlegend=False,
+
     hovermode="x unified",
-    xaxis_rangeslider_visible=False,
-    legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="left",
-        x=0,
-    ),
+
     margin=dict(
-        l=20,
-        r=20,
-        t=80,
-        b=20,
+        l=55,
+        r=25,
+        t=55,
+        b=45,
+        pad=5,
+        autoexpand=True,
+    ),
+
+    title=dict(
+        text=(
+            f"{stock.replace('.NS', '')} • "
+            f"{strategy_mode} • "
+            f"{graph_type}"
+        ),
+        x=0.01,
+        xanchor="left",
+        y=0.99,
+        yanchor="top",
+        automargin=True,
+    ),
+
+    font=dict(
+        size=12,
     ),
 )
 
 
+# ------------------------------------------------------------
+# Responsive axis margins
+# ------------------------------------------------------------
+
 fig.update_xaxes(
+    automargin=True,
     showgrid=True,
 )
 
 
 fig.update_yaxes(
+    automargin=True,
     showgrid=True,
 )
 
 
 # ============================================================
-# DISPLAY MAIN GRAPH
+# MAIN CHART
 # ============================================================
 
 st.subheader(
@@ -1583,20 +2419,28 @@ st.subheader(
 )
 
 
+st.caption(
+    "Hover over the chart for synchronized indicator values. "
+    "Use the Plotly toolbar to zoom, pan and reset the chart."
+)
+
+
 st.plotly_chart(
     fig,
     width="stretch",
     config={
+        "responsive": True,
         "displayModeBar": True,
         "displaylogo": False,
         "scrollZoom": True,
-        "responsive": True,
+        "doubleClick": "reset",
+        "showTips": True,
     },
 )
 
 
 # ============================================================
-# CURRENT INDICATOR VALUES
+# CURRENT VALUES
 # ============================================================
 
 st.subheader(
@@ -1604,489 +2448,70 @@ st.subheader(
 )
 
 
-latest = chart_df.iloc[-1]
-
-
-value_columns = [
-    (
-        "SMA 20",
-        "SMA_20",
-    ),
-    (
-        "SMA 50",
-        "SMA_50",
-    ),
-    (
-        "EMA 20",
-        "EMA_20",
-    ),
-    (
-        "EMA 50",
-        "EMA_50",
-    ),
-    (
-        "RSI",
-        "RSI",
-    ),
-    (
-        "MACD",
-        "MACD",
-    ),
-    (
-        "MACD Signal",
-        "MACD_Signal",
-    ),
-    (
-        "MACD Histogram",
-        "MACD_Histogram",
-    ),
-    (
-        "VWAP",
-        "VWAP",
-    ),
-    (
-        "Supertrend",
-        "Supertrend",
-    ),
-    (
-        "ATR",
-        "ATR",
-    ),
-    (
-        "Momentum",
-        "Momentum",
-    ),
-    (
-        "Volume Ratio",
-        "Volume_Ratio",
-    ),
+metric_items = [
+    ("Close", "Close"),
+    ("SMA 20", "SMA_20"),
+    ("SMA 50", "SMA_50"),
+    ("EMA 20", "EMA_20"),
+    ("EMA 50", "EMA_50"),
+    ("RSI", "RSI"),
+    ("MACD", "MACD"),
+    ("MACD Signal", "MACD_Signal"),
+    ("VWAP", "VWAP"),
+    ("Supertrend", "Supertrend"),
+    ("ATR", "ATR"),
+    ("Momentum", "Momentum"),
+    ("Volume Ratio", "Volume_Ratio"),
 ]
 
 
-available_values = [
+available_metrics = [
     item
-    for item in value_columns
+    for item in metric_items
     if item[1] in chart_df.columns
 ]
 
 
-if available_values:
+# Responsive metric rows:
+# 4 on desktop-ish widths, naturally stacks on smaller screens.
 
-    columns_per_row = 4
-
-    for start in range(
-        0,
-        len(available_values),
-        columns_per_row,
-    ):
-
-        row_items = available_values[
-            start:start + columns_per_row
-        ]
-
-        metric_columns = st.columns(
-            len(row_items)
-        )
-
-        for metric_column, (
-            label,
-            column,
-        ) in zip(
-            metric_columns,
-            row_items,
-        ):
-
-            value = safe_last_value(
-                chart_df,
-                column,
-            )
-
-            with metric_column:
-
-                st.metric(
-                    label,
-                    format_value(value),
-                    help=get_indicator_tooltip(
-                        get_indicator_guide_key(
-                            label
-                        )
-                    ),
-                )
-
-
-# ============================================================
-# INDICATOR EXPLANATIONS
-# ============================================================
-
-st.subheader(
-    "📚 Technical Indicator Guide"
-)
-
-
-guide_indicators = []
-
-
-for indicator in selected_indicators:
-
-    guide_key = get_indicator_guide_key(
-        indicator
-    )
-
-    if guide_key not in guide_indicators:
-
-        guide_indicators.append(
-            guide_key
-        )
-
-
-# Add RSI/MACD/Volume if selected through panel checkboxes
-if show_rsi and "RSI" not in guide_indicators:
-
-    guide_indicators.append("RSI")
-
-
-if show_macd and "MACD" not in guide_indicators:
-
-    guide_indicators.append("MACD")
-
-
-if show_volume and "Volume" not in guide_indicators:
-
-    guide_indicators.append("Volume")
-
-
-for indicator in guide_indicators:
-
-    try:
-
-        show_indicator_guide(
-            st,
-            indicator,
-        )
-
-    except Exception:
-
-        with st.expander(
-            f"ℹ️ {indicator}"
-        ):
-
-            tooltip = get_indicator_tooltip(
-                indicator
-            )
-
-            if tooltip:
-
-                st.write(
-                    tooltip
-                )
-
-            else:
-
-                st.write(
-                    f"Learn how to use {indicator} "
-                    "for technical analysis."
-                )
-
-
-# ============================================================
-# TECHNICAL INTERPRETATION
-# ============================================================
-
-st.subheader(
-    "🧠 Quick Technical Interpretation"
-)
-
-
-interpretation = []
-
-
-# ------------------------------------------------------------
-# RSI
-# ------------------------------------------------------------
-
-rsi_value = safe_last_value(
-    chart_df,
-    "RSI",
-)
-
-
-if rsi_value is not None:
-
-    if rsi_value >= 70:
-
-        interpretation.append(
-            f"🔴 RSI is {rsi_value:.2f}: "
-            "potentially overbought."
-        )
-
-    elif rsi_value <= 30:
-
-        interpretation.append(
-            f"🟢 RSI is {rsi_value:.2f}: "
-            "potentially oversold."
-        )
-
-    else:
-
-        interpretation.append(
-            f"🟡 RSI is {rsi_value:.2f}: "
-            "neutral zone."
-        )
-
-
-# ------------------------------------------------------------
-# SMA
-# ------------------------------------------------------------
-
-close_value = safe_last_value(
-    chart_df,
-    "Close",
-)
-
-sma20_value = safe_last_value(
-    chart_df,
-    "SMA_20",
-)
-
-sma50_value = safe_last_value(
-    chart_df,
-    "SMA_50",
-)
-
-
-if (
-    close_value is not None
-    and sma20_value is not None
+for start in range(
+    0,
+    len(available_metrics),
+    4,
 ):
 
-    if close_value > sma20_value:
-
-        interpretation.append(
-            "🟢 Price is above SMA 20, "
-            "indicating short-term strength."
-        )
-
-    else:
-
-        interpretation.append(
-            "🔴 Price is below SMA 20, "
-            "indicating short-term weakness."
-        )
-
-
-if (
-    sma20_value is not None
-    and sma50_value is not None
-):
-
-    if sma20_value > sma50_value:
-
-        interpretation.append(
-            "🟢 SMA 20 is above SMA 50, "
-            "supporting a bullish trend structure."
-        )
-
-    else:
-
-        interpretation.append(
-            "🔴 SMA 20 is below SMA 50, "
-            "indicating a weaker trend structure."
-        )
-
-
-# ------------------------------------------------------------
-# VWAP
-# ------------------------------------------------------------
-
-vwap_value = safe_last_value(
-    chart_df,
-    "VWAP",
-)
-
-
-if (
-    close_value is not None
-    and vwap_value is not None
-):
-
-    if close_value > vwap_value:
-
-        interpretation.append(
-            "🟢 Price is above VWAP, "
-            "which can indicate positive intraday positioning."
-        )
-
-    else:
-
-        interpretation.append(
-            "🔴 Price is below VWAP, "
-            "which can indicate negative intraday positioning."
-        )
-
-
-# ------------------------------------------------------------
-# MACD
-# ------------------------------------------------------------
-
-macd_value = safe_last_value(
-    chart_df,
-    "MACD",
-)
-
-macd_signal = safe_last_value(
-    chart_df,
-    "MACD_Signal",
-)
-
-
-if (
-    macd_value is not None
-    and macd_signal is not None
-):
-
-    if macd_value > macd_signal:
-
-        interpretation.append(
-            "🟢 MACD is above its signal line, "
-            "supporting bullish momentum."
-        )
-
-    else:
-
-        interpretation.append(
-            "🔴 MACD is below its signal line, "
-            "indicating weaker momentum."
-        )
-
-
-# ------------------------------------------------------------
-# SUPERTREND
-# ------------------------------------------------------------
-
-supertrend_value = safe_last_value(
-    chart_df,
-    "Supertrend",
-)
-
-
-if (
-    close_value is not None
-    and supertrend_value is not None
-):
-
-    if close_value > supertrend_value:
-
-        interpretation.append(
-            "🟢 Price is above Supertrend, "
-            "supporting a bullish trend bias."
-        )
-
-    else:
-
-        interpretation.append(
-            "🔴 Price is below Supertrend, "
-            "supporting a bearish trend bias."
-        )
-
-
-# ------------------------------------------------------------
-# VOLUME RATIO
-# ------------------------------------------------------------
-
-volume_ratio = safe_last_value(
-    chart_df,
-    "Volume_Ratio",
-)
-
-
-if volume_ratio is not None:
-
-    if volume_ratio >= 1.5:
-
-        interpretation.append(
-            f"🔥 Volume Ratio is {volume_ratio:.2f}x: "
-            "volume is significantly above the reference average."
-        )
-
-    elif volume_ratio >= 1.0:
-
-        interpretation.append(
-            f"🟡 Volume Ratio is {volume_ratio:.2f}x: "
-            "volume is around or above the reference average."
-        )
-
-    else:
-
-        interpretation.append(
-            f"⚪ Volume Ratio is {volume_ratio:.2f}x: "
-            "volume is below the reference average."
-        )
-
-
-if interpretation:
-
-    for item in interpretation:
-
-        st.write(item)
-
-else:
-
-    st.info(
-        "Not enough indicator data is available "
-        "to generate an interpretation."
-    )
-
-
-# ============================================================
-# RECENT MARKET DATA
-# ============================================================
-
-with st.expander(
-    "📋 View Recent Market Data"
-):
-
-    display_columns = [
-        column
-        for column in [
-            "Open",
-            "High",
-            "Low",
-            "Close",
-            "Volume",
-            "SMA_20",
-            "SMA_50",
-            "EMA_20",
-            "EMA_50",
-            "RSI",
-            "MACD",
-            "MACD_Signal",
-            "VWAP",
-            "Supertrend",
-            "ATR",
-            "Momentum",
-            "Volume_Ratio",
-        ]
-        if column in chart_df.columns
+    items = available_metrics[
+        start:start + 4
     ]
 
+    metric_cols = st.columns(
+        len(items),
+        gap="small",
+    )
 
-    if display_columns:
+    for col, (
+        label,
+        column,
+    ) in zip(
+        metric_cols,
+        items,
+    ):
 
-        recent_data = chart_df[
-            display_columns
-        ].tail(30).copy()
-
-
-        st.dataframe(
-            recent_data,
-            width="stretch",
+        value = latest_value(
+            chart_df,
+            column,
         )
 
-    else:
+        with col:
 
-        st.info(
-            "No displayable market columns are available."
-        )
+            st.metric(
+                label,
+                fmt(value),
+                help=get_indicator_tooltip(
+                    label
+                ),
+            )
 
 
 # ============================================================
@@ -2094,7 +2519,7 @@ with st.expander(
 # ============================================================
 
 with st.expander(
-    "⭐ View Saved Favorites"
+    "⭐ Saved Favorite Combinations"
 ):
 
     favorite1 = st.session_state.get(
@@ -2112,31 +2537,28 @@ with st.expander(
         [],
     )
 
-
     st.markdown(
         "**Favorite 1:** "
         + (
-            ", ".join(favorite1)
+            " • ".join(favorite1)
             if favorite1
             else "Empty"
         )
     )
 
-
     st.markdown(
         "**Favorite 2:** "
         + (
-            ", ".join(favorite2)
+            " • ".join(favorite2)
             if favorite2
             else "Empty"
         )
     )
 
-
     st.markdown(
         "**Favorite 3:** "
         + (
-            ", ".join(favorite3)
+            " • ".join(favorite3)
             if favorite3
             else "Empty"
         )
@@ -2144,14 +2566,143 @@ with st.expander(
 
 
 # ============================================================
-# FOOTER
+# INDICATOR GUIDE
+# ============================================================
+
+st.subheader(
+    "📚 Technical Indicator Guide"
+)
+
+
+guide_keys = []
+
+
+guide_mapping = {
+    "SMA 20": "SMA",
+    "SMA 50": "SMA",
+    "EMA 20": "EMA",
+    "EMA 50": "EMA",
+    "Bollinger Bands": "Bollinger Bands",
+    "VWAP": "VWAP",
+    "Supertrend": "Supertrend",
+    "RSI": "RSI",
+    "MACD": "MACD",
+    "ATR": "ATR",
+    "Momentum": "Momentum",
+    "Volume": "Volume",
+    "Volume Ratio": "Volume Ratio",
+}
+
+
+for indicator in selected_indicators:
+
+    key = guide_mapping.get(
+        indicator,
+        indicator,
+    )
+
+    if key not in guide_keys:
+
+        guide_keys.append(
+            key
+        )
+
+
+for indicator in guide_keys:
+
+    try:
+
+        show_indicator_guide(
+            st,
+            indicator,
+        )
+
+    except Exception:
+
+        with st.expander(
+            f"ℹ️ {indicator}"
+        ):
+
+            st.write(
+                get_indicator_tooltip(
+                    indicator
+                )
+            )
+
+
+# ============================================================
+# RECENT MARKET DATA
+# ============================================================
+
+with st.expander(
+    "📋 Recent Market Data"
+):
+
+    display_columns = [
+        column
+        for column in [
+            "Open",
+            "High",
+            "Low",
+            "Close",
+            "Volume",
+            "SMA_20",
+            "SMA_50",
+            "EMA_20",
+            "EMA_50",
+            "RSI",
+            "MACD",
+            "MACD_Signal",
+            "MACD_Histogram",
+            "VWAP",
+            "Supertrend",
+            "ATR",
+            "Momentum",
+            "Volume_Ratio",
+        ]
+        if column in chart_df.columns
+    ]
+
+
+    if display_columns:
+
+        recent = chart_df[
+            display_columns
+        ].tail(30)
+
+
+        st.dataframe(
+            recent,
+            width="stretch",
+        )
+
+    else:
+
+        st.info(
+            "No indicator data available."
+        )
+
+
+# ============================================================
+# RISK / DISCLAIMER
 # ============================================================
 
 st.divider()
 
+
+st.warning(
+    "⚠️ **Technical-analysis disclaimer:** "
+    "The Strong Buy / Buy / Hold / Sell / Strong Sell "
+    "classification is a rule-based technical signal generated "
+    "from the available indicators. It is not a guarantee of "
+    "future returns. Buy zones, stop losses and targets are "
+    "calculated reference levels and should be validated against "
+    "current price action, liquidity, news, support/resistance "
+    "and your own risk management."
+)
+
+
 st.caption(
-    "Technical indicators are analytical tools and should "
-    "not be treated as guaranteed buy/sell signals. "
-    "Combine indicators with price action, volume, risk "
-    "management and your investment timeframe."
+    "Investment in securities market are subject to market risks. "
+    "Read all the related documents carefully before investing."
 )
