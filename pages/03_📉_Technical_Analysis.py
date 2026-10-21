@@ -1,6 +1,8 @@
 # pages/03_📉_Technical_Analysis.py
 
 import streamlit as st
+import streamlit.components.v1 as components
+from html import escape
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -1888,49 +1890,109 @@ def calculate_trade_plan(
 # RESPONSIVE INDICATOR CHIPS
 # ============================================================
 
-def show_indicator_chips(
-    selected,
-):
+def show_indicator_chips(selected):
+    """Render selected indicators as responsive HTML chips.
 
-    if not selected:
+    components.html isolates the chip markup and its CSS from Streamlit's
+    Markdown renderer, preventing the HTML source from appearing as plain text.
+    """
+    indicators = list(selected or [])
 
+    if not indicators:
         st.info(
             "No indicators selected. "
             "Choose indicators above to display them on the chart."
         )
-
         return
 
-    chips = ""
+    chips = "".join(
+        f'<span class="indicator-chip" title="{escape(str(indicator), quote=True)}">'
+        f'{escape(str(indicator))}</span>'
+        for indicator in indicators
+    )
 
-    for indicator in selected:
-
-        chips += f"""
-        <span
-            class="indicator-chip"
-            title="{indicator}"
-        >
-            {indicator}
-        </span>
-        """
-
-    html = f"""
-    <div class="indicator-chip-wrapper">
+    html_content = f"""
+    <!doctype html>
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <style>
+        * {{ box-sizing: border-box; }}
+        body {{
+            margin: 0;
+            padding: 2px 0 6px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                         sans-serif;
+            color: var(--text-color, #31333F);
+        }}
+        .indicator-chip-wrapper {{
+            width: 100%;
+            padding: 4px 0 2px;
+        }}
+        .indicator-chip-container {{
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 7px;
+            width: 100%;
+            max-width: 100%;
+        }}
+        .indicator-chip {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            max-width: 100%;
+            min-height: 30px;
+            padding: 5px 11px;
+            border-radius: 999px;
+            border: 1px solid rgba(80, 120, 200, 0.35);
+            background: rgba(80, 120, 200, 0.12);
+            color: inherit;
+            font-size: 13px;
+            line-height: 1.2;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }}
+        .indicator-chip:hover {{
+            background: rgba(80, 120, 200, 0.20);
+        }}
+        .indicator-count {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 28px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(128, 128, 128, 0.14);
+            font-size: 12px;
+            font-weight: 650;
+            white-space: nowrap;
+            margin-left: auto;
+        }}
+        @media (max-width: 600px) {{
+            .indicator-chip {{ font-size: 12px; padding: 5px 9px; }}
+            .indicator-count {{ margin-left: 0; }}
+        }}
+    </style>
+    </head>
+    <body>
+      <div class="indicator-chip-wrapper">
         <div class="indicator-chip-container">
-
-            {chips}
-
-            <span class="indicator-count">
-                {len(selected)} selected
-            </span>
-
+          {chips}
+          <span class="indicator-count">{len(indicators)} selected</span>
         </div>
-    </div>
+      </div>
+    </body>
+    </html>
     """
 
-    st.markdown(
-        html,
-        unsafe_allow_html=True,
+    # Height adapts to wrapping so chips do not get clipped on narrow screens.
+    rows = (len(indicators) + 2) // 3
+    frame_height = min(180, max(58, rows * 42 + 16))
+    components.html(
+        html_content,
+        height=frame_height,
+        scrolling=False,
     )
 
 
