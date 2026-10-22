@@ -1,6 +1,7 @@
 # pages/03_📉_Technical_Analysis.py
 
 import streamlit as st
+import inspect
 import streamlit.components.v1 as components
 from html import escape
 import pandas as pd
@@ -114,13 +115,44 @@ TIMEFRAMES = [
     "Long Term",
 ]
 
+# Candle intervals offered by the chart. Actual intraday data is only available
+# when services.stock_service.analyze_stock supports an interval argument.
+CANDLE_INTERVALS = [
+    "1 minute",
+    "2 minutes",
+    "5 minutes",
+    "15 minutes",
+    "30 minutes",
+    "60 minutes",
+    "90 minutes",
+    "1 day",
+    "1 week",
+    "1 month",
+]
+INTERVAL_TO_PROVIDER = {
+    "1 minute": "1m",
+    "2 minutes": "2m",
+    "5 minutes": "5m",
+    "15 minutes": "15m",
+    "30 minutes": "30m",
+    "60 minutes": "60m",
+    "90 minutes": "90m",
+    "1 day": "1d",
+    "1 week": "1wk",
+    "1 month": "1mo",
+}
+
 PERIODS = [
+    "1 Day",
+    "5 Days",
+    "10 Days",
     "30 Days",
     "60 Days",
     "90 Days",
     "180 Days",
     "1 Year",
     "2 Years",
+    "5 Years",
 ]
 
 GRAPH_TYPES = [
@@ -143,6 +175,7 @@ SESSION_DEFAULTS = {
     "technical_strategy_mode": "Intraday",
     "technical_graph_type": "Heikin Ashi",
     "technical_period": "90 Days",
+    "technical_candle_interval": "1 day",
 }
 
 for key, value in SESSION_DEFAULTS.items():
@@ -825,6 +858,149 @@ def calculate_heikin_ashi(df):
 
 
 # ============================================================
+# LOCAL INDICATOR CALCULATION
+# ============================================================
+
+def calculate_missing_indicators(df):
+    """Calculate chart indicators locally so selector changes can render them.
+
+    Existing service-calculated columns are preserved where present. The
+    calculations use OHLCV columns and work with daily or intraday candles.
+    """
+    if df is None or df.empty or "Close" not in df.columns:
+        return df
+
+    result = df.copy()
+    close = pd.to_numeric(result["Close"], errors="coerce")
+    high = pd.to_numeric(result["High"], errors="coerce") if "High" in result else close
+    low = pd.to_numeric(result["Low"], errors="coerce") if "Low" in result else close
+    volume = pd.to_numeric(result["Volume"], errors="coerce") if "Volume" in result else pd.Series(0.0, index=result.index)
+
+    for period in (20, 50):
+        sma_col = f"SMA_{period}"
+        ema_col = f"EMA_{period}"
+        if sma_col not in result.columns:
+            result[sma_col] = close.rolling(period, min_periods=1).mean()
+        if ema_col not in result.columns:
+            result[ema_col] = close.ewm(span=period, adjust=False, min_periods=1).mean()
+
+    if "RSI" not in result.columns:
+        delta = close.diff()
+        gain = delta.clip(lower=0).ewm(alpha=1/14, adjust=False, min_periods=14).mean()
+        loss = (-delta.clip(upper=0)).ewm(alpha=1/14, adjust=False, min_periods=14).mean()
+        rs = gain / loss.replace(0, np.nan)
+        result["RSI"] = 100 - (100 / (1 + rs))
+        result.loc[(loss == 0) & (gain > 0), "RSI"] = 100
+
+    if not all(c in result.columns for c in ("MACD", "MACD_Signal", "MACD_Hist")):
+        ema12 = close.ewm(span=12, adjust=False, min_periods=1).mean()
+        ema26 = close.ewm(span=26, adjust=False, min_periods=1).mean()
+        macd = ema12 - ema26
+        if "MACD" not in result.columns:
+            result["MACD"] = macd
+        if "MACD_Signal" not in result.columns:
+            result["MACD_Signal"] = macd.ewm(span=9, adjust=False, min_periods=1).mean()
+        if "MACD_Hist" not in result.columns:
+            result["MACD_Hist"] = result["MACD"] - result["MACD_Signal"]
+
+    if "Momentum" not in result.columns:
+        result["Momentum"] = close - close.shift(10)
+
+    if "ATR" not in result.columns:
+        previous_close = close.shift(1)
+        true_range = pd.concat(
+            [(high - low).abs(), (high - previous_close).abs(), (low - previous_close).abs()],
+            axis=1,
+        ).max(axis=1)
+        result["ATR"] = true_range.rolling(14, min_periods=1).mean()
+
+    if not all(c in result.columns for c in ("BB_Upper", "BB_Middle", "BB_Lower")):
+        middle = close.rolling(20, min_periods=1).mean()
+        std = close.rolling(20, min_periods=1).std(ddof=0).fillna(0)
+        if "BB_Upper" not in result.columns:
+            result["BB_Upper"] = middle + (2 * std)
+        if "BB_Middle" not in result.columns:
+            result["BB_Middle"] = middle
+        if "BB_Lower" not in result.columns:
+            result["BB_Lower"] = middle - (2 * std)
+
+    if "Volume_Ratio" not in result.columns:
+        average_volume = volume.rolling(20, min_periods=1).mean().replace(0, np.nan)
+        result["Volume_Ratio"] = volume / average_volume
+
+    # Session VWAP resets each trading date when a datetime index is available.
+    if "VWAP" not in result.columns:
+        typical = (high + low + close) / 3
+        if isinstance(result.index, pd.DatetimeIndex):
+            session = pd.Series(result.index.date, index=result.index)
+            cumulative_pv = (typical * volume).groupby(session).cumsum()
+            cumulative_volume = volume.groupby(session).cumsum().replace(0, np.nan)
+            result["VWAP"] = cumulative_pv / cumulative_volume
+        else:
+            result["VWAP"] = (typical * volume).cumsum() / volume.cumsum().replace(0, np.nan)
+
+    if "Supertrend" not in result.columns:
+        atr = result["ATR"].fillna(0)
+        hl2 = (high + low) / 2
+        upper = hl2 + 3 * atr
+        lower = hl2 - 3 * atr
+        trend = pd.Series(index=result.index, dtype=float)
+        direction = pd.Series(index=result.index, dtype=float)
+        for i in range(len(result)):
+            if i == 0:
+                trend.iloc[i] = lower.iloc[i]
+                direction.iloc[i] = 1
+                continue
+            prev_upper = upper.iloc[i - 1]
+            prev_lower = lower.iloc[i - 1]
+            if close.iloc[i] > prev_upper:
+                direction.iloc[i] = 1
+            elif close.iloc[i] < prev_lower:
+                direction.iloc[i] = -1
+            else:
+                direction.iloc[i] = direction.iloc[i - 1]
+            trend.iloc[i] = lower.iloc[i] if direction.iloc[i] >= 0 else upper.iloc[i]
+        result["Supertrend"] = trend
+
+    return result
+
+
+def load_stock_data_for_interval(stock, interval_label, period_label):
+    """Call analyze_stock with interval/period only if its signature supports them."""
+    provider_interval = INTERVAL_TO_PROVIDER.get(interval_label, "1d")
+    provider_period_map = {
+        "1 Day": "1d", "5 Days": "5d", "10 Days": "10d",
+        "30 Days": "1mo", "60 Days": "2mo", "90 Days": "3mo",
+        "180 Days": "6mo", "1 Year": "1y", "2 Years": "2y", "5 Years": "5y",
+    }
+    provider_period = provider_period_map.get(period_label, "3mo")
+    if provider_interval in {"1m", "2m", "5m", "15m", "30m", "60m", "90m"}:
+        # Common free market-data providers restrict intraday history; 1-minute
+        # candles are often limited to about 7 days, other intraday intervals to 60 days.
+        intraday_period_map = {
+            "1 Day": "1d", "5 Days": "5d", "10 Days": "7d",
+            "30 Days": "1mo", "60 Days": "60d", "90 Days": "60d",
+            "180 Days": "60d", "1 Year": "60d", "2 Years": "60d", "5 Years": "60d",
+        }
+        provider_period = intraday_period_map.get(period_label, "5d")
+        if provider_interval == "1m" and period_label not in {"1 Day", "5 Days"}:
+            provider_period = "7d"
+    try:
+        signature = inspect.signature(analyze_stock)
+        parameters = signature.parameters
+        accepts_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in parameters.values())
+        kwargs = {}
+        if "interval" in parameters or accepts_kwargs:
+            kwargs["interval"] = provider_interval
+        if "period" in parameters or accepts_kwargs:
+            kwargs["period"] = provider_period
+        return analyze_stock(stock, **kwargs), bool("interval" in kwargs)
+    except (TypeError, ValueError):
+        # Compatibility fallback for existing services that only accept symbol.
+        return analyze_stock(stock), False
+
+
+# ============================================================
 # PERIOD FILTER
 # ============================================================
 
@@ -845,12 +1021,16 @@ def filter_period(
         return result
 
     days_map = {
+        "1 Day": 1,
+        "5 Days": 5,
+        "10 Days": 10,
         "30 Days": 30,
         "60 Days": 60,
         "90 Days": 90,
         "180 Days": 180,
         "1 Year": 365,
         "2 Years": 730,
+        "5 Years": 1825,
     }
 
     days = days_map.get(
@@ -2000,116 +2180,67 @@ def show_indicator_chips(selected):
 # PROFESSIONAL INDICATOR SELECTOR
 # ============================================================
 
-def show_indicator_selector():
+def _set_indicator_preset(indicators):
+    """Callback keeps the multiselect widget and canonical state synchronized."""
+    chosen = [item for item in indicators if item in ALL_INDICATORS]
+    st.session_state.technical_selected_indicators = chosen.copy()
+    st.session_state.technical_indicator_select = chosen.copy()
 
+
+def show_indicator_selector():
     current = st.session_state.get(
         "technical_selected_indicators",
         DEFAULT_INDICATORS.copy(),
     )
 
-    st.markdown(
-        "### 📌 Technical Indicators"
+    st.markdown("### 📌 Technical Indicators")
+    st.caption(
+        "Select one or more indicators. Price overlays are drawn on the main "
+        "chart; RSI, MACD, ATR, Momentum and volume indicators are drawn in panels."
     )
 
-    st.caption(
-        "Select the indicators you want to display on the price chart "
-        "and use for technical interpretation."
-    )
+    # Keep a separate widget key; callbacks update both keys before rerun.
+    if "technical_indicator_select" not in st.session_state:
+        st.session_state.technical_indicator_select = current.copy()
 
     selected = st.multiselect(
         "Select indicators",
         options=ALL_INDICATORS,
-        default=[
-            x for x in current
-            if x in ALL_INDICATORS
-        ],
         placeholder="Search and select indicators...",
         help=(
-            "Select multiple indicators. "
-            "Overlay indicators appear on the price chart. "
-            "Panel indicators appear in their respective analysis sections."
+            "Select multiple indicators. The main chart and indicator panels "
+            "refresh automatically when this selection changes."
         ),
         key="technical_indicator_select",
         label_visibility="collapsed",
     )
-
-    st.session_state.technical_selected_indicators = selected
-
-    # --------------------------------------------------------
-    # Quick selection buttons
-    # --------------------------------------------------------
+    st.session_state.technical_selected_indicators = list(selected)
 
     q1, q2, q3, q4 = st.columns(4)
-
     with q1:
-
-        if st.button(
-            "📈 Trend",
-            use_container_width=True,
-            key="select_trend_indicators",
-        ):
-
-            st.session_state.technical_selected_indicators = (
-                TREND_INDICATORS.copy()
-            )
-
-            st.rerun()
-
+        st.button(
+            "📈 Trend", width="stretch", key="select_trend_indicators",
+            on_click=_set_indicator_preset, args=(TREND_INDICATORS,),
+        )
     with q2:
-
-        if st.button(
-            "🚀 Momentum",
-            use_container_width=True,
-            key="select_momentum_indicators",
-        ):
-
-            st.session_state.technical_selected_indicators = (
-                MOMENTUM_INDICATORS.copy()
-            )
-
-            st.rerun()
-
+        st.button(
+            "🚀 Momentum", width="stretch", key="select_momentum_indicators",
+            on_click=_set_indicator_preset, args=(MOMENTUM_INDICATORS,),
+        )
     with q3:
-
-        if st.button(
-            "⚡ Volatility",
-            use_container_width=True,
-            key="select_volatility_indicators",
-        ):
-
-            st.session_state.technical_selected_indicators = (
-                VOLATILITY_INDICATORS.copy()
-            )
-
-            st.rerun()
-
+        st.button(
+            "⚡ Volatility", width="stretch", key="select_volatility_indicators",
+            on_click=_set_indicator_preset, args=(VOLATILITY_INDICATORS,),
+        )
     with q4:
+        st.button(
+            "⭐ Recommended", width="stretch", key="select_recommended_indicators",
+            on_click=_set_indicator_preset, args=(DEFAULT_INDICATORS,),
+        )
 
-        if st.button(
-            "⭐ Recommended",
-            use_container_width=True,
-            key="select_recommended_indicators",
-        ):
-
-            st.session_state.technical_selected_indicators = (
-                DEFAULT_INDICATORS.copy()
-            )
-
-            st.rerun()
-
-    # --------------------------------------------------------
-    # Compact selected indicator display
-    # --------------------------------------------------------
-
-    st.markdown(
-        "#### Selected"
-    )
-
-    show_indicator_chips(
-        st.session_state.technical_selected_indicators
-    )
-
-    return st.session_state.technical_selected_indicators
+    st.markdown("#### Selected")
+    show_indicator_chips(st.session_state.technical_selected_indicators)
+    return list(st.session_state.technical_selected_indicators)
 
 
 # ============================================================
@@ -2975,6 +3106,124 @@ def show_intraday_trade_setup(
 
 
 # ============================================================
+# STRATEGY-SPECIFIC CHARTS
+# ============================================================
+
+STRATEGY_CHART_SETTINGS = {
+    # Each strategy chooses its own candle interval and lookback period.
+    # Free market-data providers commonly limit intraday history to 5–60 days.
+    "Intraday": {"interval": "5 minutes", "period": "5 Days", "panels": ["RSI", "MACD", "Volume Ratio"]},
+    "Swing": {"interval": "1 day", "period": "180 Days", "panels": ["RSI", "MACD", "ATR", "Volume Ratio"]},
+    "Long Term": {"interval": "1 week", "period": "5 Years", "panels": ["RSI", "MACD", "ATR", "Volume"]},
+}
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_strategy_chart_data(stock_symbol, strategy_name):
+    """Fetch and prepare data using the strategy's own interval and period."""
+    settings = STRATEGY_CHART_SETTINGS[strategy_name]
+    raw, interval_supported = load_stock_data_for_interval(
+        stock_symbol, settings["interval"], settings["period"]
+    )
+    frame = normalize_columns(raw)
+    frame = prepare_datetime_index(frame)
+    frame = prepare_numeric_columns(frame)
+    frame = calculate_missing_indicators(frame)
+    frame = filter_period(frame, settings["period"])
+    return frame, interval_supported, settings
+
+
+def show_strategy_chart(stock_symbol, strategy_name, graph_type, selected_indicators):
+    """Render a strategy chart using its own market-data interval and period."""
+    settings = STRATEGY_CHART_SETTINGS[strategy_name]
+    interval = settings["interval"]
+    period_name = settings["period"]
+
+    st.markdown(f"### {strategy_name} price chart")
+    st.caption(
+        f"Automatic settings: **{interval} candles · {period_name} history**. "
+        "These settings are chosen independently for this strategy."
+    )
+
+    try:
+        df, interval_supported, loaded_settings = load_strategy_chart_data(
+            stock_symbol, strategy_name
+        )
+    except Exception as exc:
+        st.error(f"Could not load {strategy_name} market data: {exc}")
+        return
+
+    if df is None or df.empty:
+        st.warning(f"No data returned for {strategy_name} ({interval}, {period_name}).")
+        return
+
+    if not interval_supported and interval != "1 day":
+        st.warning(
+            f"Your current analyze_stock() service does not accept an interval argument. "
+            f"This view requested {interval} candles, but the service may have returned "
+            "its default interval. Update services/stock_service.py and "
+            "services/market_data.py to enable genuine interval-specific charts."
+        )
+
+    presets = {
+        "Intraday": ["VWAP", "Supertrend", "EMA 20", "EMA 50"],
+        "Swing": ["SMA 20", "SMA 50", "EMA 20", "EMA 50", "Bollinger Bands", "Supertrend"],
+        "Long Term": ["SMA 50", "EMA 50", "Bollinger Bands", "Supertrend"],
+    }
+    selected = list(selected_indicators or [])
+    overlays = list(dict.fromkeys(
+        [x for x in selected if x in OVERLAY_INDICATORS] + presets[strategy_name]
+    ))
+    panels = list(dict.fromkeys(
+        [x for x in selected if x in PANEL_INDICATORS] + settings["panels"]
+    ))
+
+    fig = create_price_chart(df, graph_type, overlays)
+    strategy_key = strategy_name.lower().replace(" ", "_")
+    if fig is not None:
+        st.plotly_chart(
+            fig, width="stretch", key=f"strategy_price_chart_{strategy_key}_{interval.replace(' ', '')}_{period_name.replace(' ', '')}"
+        )
+    else:
+        st.warning("Unable to create a price chart from the available OHLC data.")
+
+    # Show a strategy-specific actionable plan directly under its chart.
+    signal = calculate_technical_signal(df, strategy_name)
+    plan = calculate_trade_plan(df, strategy_name, signal)
+    st.markdown("#### Strategy trade recommendation")
+    st.write(f"**Signal:** {signal.get('signal', 'HOLD')} · **Action:** {plan.get('direction', 'WAIT')}")
+    p1, p2, p3, p4, p5 = st.columns(5)
+    with p1:
+        st.metric("Entry / Trigger", fmt(plan.get("entry")))
+    with p2:
+        st.metric("Stop Loss", fmt(plan.get("stop_loss")))
+    with p3:
+        st.metric("Target 1", fmt(plan.get("target1")))
+    with p4:
+        st.metric("Target 2", fmt(plan.get("target2")))
+    with p5:
+        st.metric("Risk : Reward", f"1 : {plan.get('rr', 0):.1f}" if plan.get("rr") else "—")
+    if plan.get("direction") == "WAIT":
+        st.info("No directional entry is confirmed. Wait for a breakout/breakdown and indicator confirmation.")
+    elif plan.get("direction") == "BUY":
+        st.success(f"Buy only after confirmation above {fmt(plan.get('entry'))}; consider partial exits at Target 1 and Target 2. Exit if stop loss {fmt(plan.get('stop_loss'))} is hit or the setup invalidates.")
+    else:
+        st.warning(f"Sell/short only where permitted and after breakdown confirmation below {fmt(plan.get('entry'))}; targets {fmt(plan.get('target1'))} and {fmt(plan.get('target2'))}. Exit if stop loss {fmt(plan.get('stop_loss'))} is hit.")
+
+    st.markdown("#### Indicator panels")
+    for indicator in panels:
+        panel = create_indicator_chart(df, indicator)
+        if panel is not None:
+            st.plotly_chart(
+                panel,
+                width="stretch",
+                key=f"strategy_indicator_{strategy_key}_{indicator.lower().replace(' ', '_').replace('/', '_')}",
+            )
+        else:
+            st.caption(f"{indicator}: unavailable for the current data returned by the service.")
+
+
+# ============================================================
 # HEADER
 # ============================================================
 
@@ -3005,11 +3254,9 @@ except Exception:
 # ============================================================
 
 try:
-
     show_page_navigation()
-
-except Exception:
-    pass
+except Exception as exc:
+    st.warning(f"Page navigation could not be rendered: {exc}")
 
 
 # ============================================================
@@ -3051,9 +3298,7 @@ st.markdown(
 # Row 1
 # ------------------------------------------------------------
 
-control1, control2, control3 = st.columns(
-    3
-)
+control1, control2, control3, control4 = st.columns(4)
 
 with control1:
 
@@ -3096,9 +3341,19 @@ with control3:
         key="technical_graph_select",
     )
 
-    st.session_state.technical_graph_type = (
-        graph_type
+    st.session_state.technical_graph_type = graph_type
+
+with control4:
+    candle_interval = st.selectbox(
+        "Candle Interval",
+        CANDLE_INTERVALS,
+        index=CANDLE_INTERVALS.index(
+            st.session_state.technical_candle_interval
+        ),
+        key="technical_candle_interval_select",
+        help="Requires the stock service to support interval-based market data.",
     )
+    st.session_state.technical_candle_interval = candle_interval
 
 st.markdown(
     "</div>",
@@ -3173,8 +3428,10 @@ with st.spinner(
 
     try:
 
-        raw_data = analyze_stock(
-            stock
+        raw_data, interval_supported = load_stock_data_for_interval(
+            stock,
+            candle_interval,
+            period,
         )
 
     except Exception as exc:
@@ -3198,15 +3455,20 @@ data = prepare_datetime_index(
     data
 )
 
-data = prepare_numeric_columns(
-    data
-)
+data = prepare_numeric_columns(data)
+data = calculate_missing_indicators(data)
 
-data = filter_period(
-    data,
-    period,
-)
+# Apply the requested display period after calculating rolling indicators, so
+# moving averages and oscillators have enough warm-up history.
+data = filter_period(data, period)
 
+if not interval_supported and candle_interval != "1 day":
+    st.warning(
+        f"Your current services.stock_service.analyze_stock() does not expose an "
+        f"'interval' parameter. Showing the service's default candle interval, "
+        f"not true {candle_interval} candles. To enable genuine intraday/weekly/monthly "
+        f"candles, update services/stock_service.py and services/market_data.py."
+    )
 
 if data is None or data.empty:
 
@@ -3424,6 +3686,29 @@ with tabs[0]:
         strategy_mode,
     )
 
+    st.markdown("### 🎯 Entry, Exit, Stop Loss & Targets")
+    st.caption(
+        "Levels are technical estimates derived from the latest close and ATR, not guaranteed prices. "
+        "Use a confirmed trigger and your own risk limits before placing any order."
+    )
+    level1, level2, level3, level4, level5 = st.columns(5)
+    with level1:
+        st.metric("Action", trade_plan.get("direction", "WAIT"))
+    with level2:
+        st.metric("Entry / Trigger", fmt(trade_plan.get("entry")))
+    with level3:
+        st.metric("Stop Loss", fmt(trade_plan.get("stop_loss")))
+    with level4:
+        st.metric("Target 1", fmt(trade_plan.get("target1")))
+    with level5:
+        st.metric("Target 2 / Final Exit", fmt(trade_plan.get("target2")))
+    if trade_plan.get("direction") == "WAIT":
+        st.info("Current signal is HOLD. Wait for a confirmed buy breakout or sell breakdown; avoid treating the reference levels as an active order.")
+    elif trade_plan.get("direction") == "BUY":
+        st.success(f"Buy setup: wait for price confirmation at/above {fmt(trade_plan.get('entry'))}. Consider booking partial profit at {fmt(trade_plan.get('target1'))} and exiting the remainder near {fmt(trade_plan.get('target2'))}; exit earlier if stop loss {fmt(trade_plan.get('stop_loss'))} is hit or the setup fails.")
+    else:
+        st.warning(f"Sell setup: confirm breakdown at/below {fmt(trade_plan.get('entry'))}. Potential downside targets are {fmt(trade_plan.get('target1'))} and {fmt(trade_plan.get('target2'))}; risk invalidation is {fmt(trade_plan.get('stop_loss'))}. Short selling is subject to market and broker rules.")
+
     st.markdown(
         "### 📌 What Should You Do Now?"
     )
@@ -3536,10 +3821,31 @@ with tabs[0]:
 
     if fig is not None:
 
+        indicator_key = "_".join(
+            item.lower().replace(" ", "_")
+            for item in selected_indicators
+        ) or "no_indicators"
         st.plotly_chart(
             fig,
-            use_container_width=True,
+            width="stretch",
+            key=f"technical_overview_price_chart_{graph_type.lower().replace(' ', '_')}_{indicator_key}",
         )
+
+    st.markdown("---")
+    st.markdown("### Strategy-specific chart views")
+    st.caption(
+        "Each strategy automatically loads its own candle interval and history, "
+        "independent of the global chart controls above."
+    )
+    strategy_tab_intraday, strategy_tab_swing, strategy_tab_longterm = st.tabs(
+        ["⚡ Intraday · 5m / 5D", "📈 Swing · 1D / 180D", "🏦 Long Term · 1W / 5Y"]
+    )
+    with strategy_tab_intraday:
+        show_strategy_chart(stock, "Intraday", graph_type, selected_indicators)
+    with strategy_tab_swing:
+        show_strategy_chart(stock, "Swing", graph_type, selected_indicators)
+    with strategy_tab_longterm:
+        show_strategy_chart(stock, "Long Term", graph_type, selected_indicators)
 
 
 # ============================================================
@@ -3627,7 +3933,7 @@ with tabs[1]:
 
         st.plotly_chart(
             fig,
-            use_container_width=True,
+            width="stretch",
         )
 
     st.markdown(
@@ -3739,7 +4045,7 @@ with tabs[2]:
 
             st.plotly_chart(
                 fig,
-                use_container_width=True,
+                width="stretch",
             )
 
 
@@ -3826,7 +4132,7 @@ with tabs[3]:
 
         st.plotly_chart(
             fig,
-            use_container_width=True,
+            width="stretch",
         )
 
     atr_fig = create_indicator_chart(
@@ -3842,7 +4148,7 @@ with tabs[3]:
 
         st.plotly_chart(
             atr_fig,
-            use_container_width=True,
+            width="stretch",
         )
 
 
@@ -3968,7 +4274,7 @@ with tabs[4]:
 
         st.plotly_chart(
             intraday_fig,
-            use_container_width=True,
+            width="stretch",
         )
 
 
@@ -4035,7 +4341,7 @@ with tabs[5]:
 
         st.plotly_chart(
             candle_fig,
-            use_container_width=True,
+            width="stretch",
         )
 
     st.markdown(
