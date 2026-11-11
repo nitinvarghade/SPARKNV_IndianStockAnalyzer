@@ -807,6 +807,7 @@ with trade_tab:
             st.metric(label, f"₹{val:,.2f}")
     st.info("Use the bullish scenario only after bullish confirmation and the bearish scenario only after bearish confirmation. Skip the setup when the stop distance, liquidity, spread, or reward-to-risk is unsuitable. Short-selling availability and holding rules differ for intraday, delivery, and derivatives.")
 
+
 with guide_tab:
     st.markdown("""
 ### Stage 1 — Market structure
