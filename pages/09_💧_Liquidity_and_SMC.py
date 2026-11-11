@@ -10,6 +10,13 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
+try:
+    from streamlit_autorefresh import st_autorefresh
+    AUTOREFRESH_AVAILABLE = True
+except ImportError:
+    st_autorefresh = None
+    AUTOREFRESH_AVAILABLE = False
+
 from services.stock_service import analyze_stock
 from components.navigation import get_selected_stock, page_header, show_page_navigation
 
@@ -68,7 +75,14 @@ def _normalise_ohlcv(data):
     if "Volume" not in df.columns:
         df["Volume"] = 0.0
     df = df.dropna(subset=["Close"]).sort_index()
-    return df[~df.index.duplicated(keep="last")]
+    df = df[~df.index.duplicated(keep="last")]
+    # Reject malformed candles instead of silently drawing misleading zones.
+    valid = (
+        (df["High"] >= df[["Open", "Close", "Low"]].max(axis=1))
+        & (df["Low"] <= df[["Open", "Close", "High"]].min(axis=1))
+        & (df["Volume"] >= 0)
+    )
+    return df.loc[valid].copy()
 
 
 def _fetch_data(symbol, strategy, custom_interval=None, custom_period=None):
@@ -79,17 +93,20 @@ def _fetch_data(symbol, strategy, custom_interval=None, custom_period=None):
         sig = inspect.signature(analyze_stock)
         params = sig.parameters
         accepts_kwargs = any(x.kind == inspect.Parameter.VAR_KEYWORD for x in params.values())
-        kwargs = {}
-        if "interval" in params or accepts_kwargs:
-            kwargs["interval"] = interval
-        if "period" in params or accepts_kwargs:
-            kwargs["period"] = period
-        raw = analyze_stock(symbol, **kwargs)
-        true_interval = "interval" in kwargs
-        return _normalise_ohlcv(raw), interval, period, true_interval
-    except TypeError:
-        raw = analyze_stock(symbol)
-        return _normalise_ohlcv(raw), interval, period, False
+    except (TypeError, ValueError):
+        params, accepts_kwargs = {}, False
+
+    kwargs = {}
+    if "interval" in params or accepts_kwargs:
+        kwargs["interval"] = interval
+    if "period" in params or accepts_kwargs:
+        kwargs["period"] = period
+
+    # Do not catch TypeError from inside the service: it is a real service error,
+    # not evidence that the function has a different signature.
+    raw = analyze_stock(symbol, **kwargs)
+    true_interval = "interval" in kwargs
+    return _normalise_ohlcv(raw), interval, period, true_interval
 
 
 def _atr(df, n=14):
@@ -159,8 +176,11 @@ def _analyse_smc(df, strategy):
     df["SwingHighFlag"], df["SwingLowFlag"] = _pivot_points(df, pivot)
     df["SwingHigh"] = df["High"].where(df["SwingHighFlag"])
     df["SwingLow"] = df["Low"].where(df["SwingLowFlag"])
-    df["PrevSwingHigh"] = df["SwingHigh"].ffill().shift(1)
-    df["PrevSwingLow"] = df["SwingLow"].ffill().shift(1)
+    # A centred pivot is visually located on its pivot candle, but it is not
+    # knowable until `pivot` candles later. Delay its availability to prevent
+    # historical BOS/sweep signals from using future information.
+    df["PrevSwingHigh"] = df["SwingHigh"].ffill().shift(pivot + 1)
+    df["PrevSwingLow"] = df["SwingLow"].ffill().shift(pivot + 1)
     df["BOS_Bull"] = (df["Close"] > df["PrevSwingHigh"]) & (df["Close"].shift(1) <= df["PrevSwingHigh"])
     df["BOS_Bear"] = (df["Close"] < df["PrevSwingLow"]) & (df["Close"].shift(1) >= df["PrevSwingLow"])
 
@@ -185,8 +205,8 @@ def _analyse_smc(df, strategy):
     internal_hi, internal_lo = _pivot_points(df, internal_pivot)
     df["InternalSwingHigh"] = df["High"].where(internal_hi)
     df["InternalSwingLow"] = df["Low"].where(internal_lo)
-    df["InternalPrevHigh"] = df["InternalSwingHigh"].ffill().shift(1)
-    df["InternalPrevLow"] = df["InternalSwingLow"].ffill().shift(1)
+    df["InternalPrevHigh"] = df["InternalSwingHigh"].ffill().shift(internal_pivot + 1)
+    df["InternalPrevLow"] = df["InternalSwingLow"].ffill().shift(internal_pivot + 1)
     df["InternalBOS_Bull"] = (df["Close"] > df["InternalPrevHigh"]) & (df["Close"].shift(1) <= df["InternalPrevHigh"])
     df["InternalBOS_Bear"] = (df["Close"] < df["InternalPrevLow"]) & (df["Close"].shift(1) >= df["InternalPrevLow"])
 
@@ -216,8 +236,8 @@ def _analyse_smc(df, strategy):
     eq_highs, eq_lows = pools(highs), pools(lows)
 
     # Sweep: price trades beyond a recent confirmed swing and closes back inside.
-    recent_high = df["SwingHigh"].ffill().shift(1)
-    recent_low = df["SwingLow"].ffill().shift(1)
+    recent_high = df["SwingHigh"].ffill().shift(pivot + 1)
+    recent_low = df["SwingLow"].ffill().shift(pivot + 1)
     df["BuySideSweep"] = (df["High"] > recent_high) & (df["Close"] < recent_high)
     df["SellSideSweep"] = (df["Low"] < recent_low) & (df["Close"] > recent_low)
 
@@ -230,18 +250,26 @@ def _analyse_smc(df, strategy):
     # Simplified order-block candidates: last opposite candle before a BOS.
     df["BullOB"] = np.nan
     df["BearOB"] = np.nan
+    df["BullOB_Low"] = np.nan
+    df["BullOB_High"] = np.nan
+    df["BearOB_Low"] = np.nan
+    df["BearOB_High"] = np.nan
     for i in np.flatnonzero(df["BOS_Bull"].fillna(False).to_numpy()):
         start = max(0, i - 5)
         candidates = [j for j in range(start, i) if df["Close"].iloc[j] < df["Open"].iloc[j]]
         if candidates:
             j = candidates[-1]
             df.iloc[i, df.columns.get_loc("BullOB")] = (df["Low"].iloc[j] + df["High"].iloc[j]) / 2
+            df.iloc[i, df.columns.get_loc("BullOB_Low")] = df["Low"].iloc[j]
+            df.iloc[i, df.columns.get_loc("BullOB_High")] = df["High"].iloc[j]
     for i in np.flatnonzero(df["BOS_Bear"].fillna(False).to_numpy()):
         start = max(0, i - 5)
         candidates = [j for j in range(start, i) if df["Close"].iloc[j] > df["Open"].iloc[j]]
         if candidates:
             j = candidates[-1]
             df.iloc[i, df.columns.get_loc("BearOB")] = (df["Low"].iloc[j] + df["High"].iloc[j]) / 2
+            df.iloc[i, df.columns.get_loc("BearOB_Low")] = df["Low"].iloc[j]
+            df.iloc[i, df.columns.get_loc("BearOB_High")] = df["High"].iloc[j]
 
     # Block lifecycle heuristics. OB midpoint revisit = mitigation candidate;
     # close through the opposite block midpoint = breaker candidate.
@@ -277,9 +305,9 @@ def _analyse_smc(df, strategy):
     bullish_events = int(recent["BOS_Bull"].fillna(False).sum()) + int(recent["SellSideSweep"].fillna(False).sum())
     bearish_events = int(recent["BOS_Bear"].fillna(False).sum()) + int(recent["BuySideSweep"].fillna(False).sum())
     if close > midpoint and bullish_events > bearish_events:
-        bias, reason = "Bullish", "Price is in the range premium half and recent bullish structure/sell-side sweep events dominate. Confirm before entry."
+        bias, reason = "Bullish", "Price is in the range discount half and recent bullish structure/sell-side sweep events dominate. Confirm before entry."
     elif close < midpoint and bearish_events > bullish_events:
-        bias, reason = "Bearish", "Price is in the range discount half and recent bearish structure/buy-side sweep events dominate. Confirm before entry."
+        bias, reason = "Bearish", "Price is in the range premium half and recent bearish structure/buy-side sweep events dominate. Confirm before entry."
     elif close > midpoint:
         bias, reason = "Cautiously bullish", "Price is above the selected range midpoint; structure events are mixed. Wait for a clean break/retest or sweep confirmation."
     elif close < midpoint:
@@ -391,17 +419,30 @@ def _price_chart(df, levels, strategy, show_sweeps=True, show_fvg=True,
                 )
 
     if show_order_blocks:
-        for col, label, color in [
-            ("BullOB", "Bullish OB candidate", "#159D78"),
-            ("BearOB", "Bearish OB candidate", "#D9534F"),
+        for col, low_col, high_col, label, fill, line in [
+            ("BullOB", "BullOB_Low", "BullOB_High", "Bullish order block",
+             "rgba(21,157,120,0.13)", "#159D78"),
+            ("BearOB", "BearOB_Low", "BearOB_High", "Bearish order block",
+             "rgba(217,83,79,0.13)", "#D9534F"),
         ]:
-            pts = view[view[col].notna()].tail(3)
-            if not pts.empty:
-                fig.add_trace(go.Scatter(
-                    x=pts.index, y=pts[col], mode="markers", name=label,
-                    marker=dict(color=color, size=8, symbol="diamond"),
-                    hovertemplate="%{x}<br>" + label + "<br>Level: %{y:.2f}<extra></extra>"
-                ), row=1, col=1)
+            pts = view[view[col].notna()].tail(4)
+            for idx, row in pts.iterrows():
+                zone_low = float(row[low_col])
+                zone_high = float(row[high_col])
+                fig.add_shape(
+                    type="rect", x0=idx, x1=view.index[-1],
+                    y0=zone_low, y1=zone_high,
+                    fillcolor=fill, line=dict(color=line, width=1),
+                    layer="below", row=1, col=1,
+                )
+                fig.add_annotation(
+                    x=view.index[max(0, len(view.index) - 8)],
+                    y=(zone_low + zone_high) / 2,
+                    xref="x", yref="y", text=label.upper(),
+                    showarrow=False, xanchor="left",
+                    font=dict(size=9, color=line),
+                    bgcolor="rgba(255,255,255,0.88)", borderpad=1,
+                )
 
     # Put the active illustrative trade plan directly on the price panel.
     # Liquidity sweeps are separately marked with triangle markers above/below candles.
@@ -483,6 +524,42 @@ def _price_chart(df, levels, strategy, show_sweeps=True, show_fvg=True,
 
 with st.sidebar:
     st.subheader("SMC settings")
+
+    refresh_options = {
+        "Off (manual refresh)": 0,
+        "Every 5 seconds": 5,
+        "Every 10 seconds": 10,
+        "Every 15 seconds": 15,
+        "Every 30 seconds": 30,
+        "Every 60 seconds": 60,
+        "Every 2 minutes": 120,
+    }
+    refresh_label = st.selectbox(
+        "Auto-refresh",
+        list(refresh_options.keys()),
+        index=0,
+        key="smc_auto_refresh_interval",
+        help=(
+            "Automatically reruns this page and requests the latest data from "
+            "the configured market-data service. Choose Off to refresh manually."
+        ),
+    )
+    refresh_seconds = refresh_options[refresh_label]
+
+    if refresh_seconds and AUTOREFRESH_AVAILABLE:
+        st_autorefresh(
+            interval=refresh_seconds * 1000,
+            limit=None,
+            key="smc_auto_refresh_timer",
+        )
+        st.caption(f"Auto-refresh is ON · every {refresh_seconds} seconds")
+    elif refresh_seconds and not AUTOREFRESH_AVAILABLE:
+        st.warning(
+            "Auto-refresh needs the optional package. Install it with "
+            "`pip install streamlit-autorefresh`, then restart Streamlit."
+        )
+    else:
+        st.caption("Auto-refresh is OFF · use the browser/app refresh to reload data.")
     strategy = st.selectbox("Trading horizon", list(STRATEGY_PRESETS), index=0, key="smc_strategy")
     preset = STRATEGY_PRESETS[strategy]
     custom_data = st.checkbox("Override candle interval/history", value=False, help="Works only if services.stock_service.analyze_stock supports interval and period arguments.")
@@ -547,6 +624,11 @@ else:
         chart_trade_plan = _make_trade_plan(smc, levels, "BUY")
 
 st.caption(f"Selected stock: {stock} · Horizon: {strategy} · Requested candles: {INTERVAL_LABELS.get(requested_interval, requested_interval)} · Requested history: {requested_period} · {len(smc):,} candles loaded")
+if refresh_seconds:
+    st.caption(
+        f"Data refresh is scheduled every {refresh_seconds} seconds. "
+        "Actual freshness depends on the market-data provider and its rate limits."
+    )
 st.warning("SMC markings are algorithmic approximations from OHLC candles. They cannot identify actual institutional orders or hidden liquidity. Validate every setup; this page does not place orders.")
 
 m1, m2, m3, m4 = st.columns(4)
@@ -727,8 +809,37 @@ with trade_tab:
     bear_zone = bool(smc["BearFVG_Low"].tail(10).notna().any() or smc["BearOB"].tail(10).notna().any())
     bull_location = close <= levels["midpoint"]
     bear_location = close >= levels["midpoint"]
-    bull_score = sum([bull_sweep, bull_structure, bull_zone, bull_location, levels["bias"] in ("Bullish", "Cautiously bullish")])
-    bear_score = sum([bear_sweep, bear_structure, bear_zone, bear_location, levels["bias"] in ("Bearish", "Cautiously bearish")])
+    # Same-timeframe trend alignment is used as a proxy because the current
+    # stock_service interface does not provide a separate higher-timeframe feed.
+    ema_fast = smc["Close"].ewm(span=20, adjust=False).mean()
+    ema_slow = smc["Close"].ewm(span=50, adjust=False).mean()
+    bull_trend = bool(ema_fast.iloc[-1] > ema_slow.iloc[-1])
+    bear_trend = bool(ema_fast.iloc[-1] < ema_slow.iloc[-1])
+    bull_ob = bool(smc["BullOB"].tail(10).notna().any())
+    bear_ob = bool(smc["BearOB"].tail(10).notna().any())
+    bull_fvg = bool(smc["BullFVG_Low"].tail(10).notna().any())
+    bear_fvg = bool(smc["BearFVG_Low"].tail(10).notna().any())
+    bull_volume = bool(smc["BullVolumeImbalance"].tail(5).fillna(False).any())
+    bear_volume = bool(smc["BearVolumeImbalance"].tail(5).fillna(False).any())
+
+    bull_checks = [
+        ("Market structure", bull_structure, 25),
+        ("Sell-side liquidity sweep", bull_sweep, 20),
+        ("Bullish order block", bull_ob, 20),
+        ("Bullish FVG", bull_fvg, 15),
+        ("Bullish volume confirmation", bull_volume, 10),
+        ("Trend alignment (same timeframe)", bull_trend, 10),
+    ]
+    bear_checks = [
+        ("Market structure", bear_structure, 25),
+        ("Buy-side liquidity sweep", bear_sweep, 20),
+        ("Bearish order block", bear_ob, 20),
+        ("Bearish FVG", bear_fvg, 15),
+        ("Bearish volume confirmation", bear_volume, 10),
+        ("Trend alignment (same timeframe)", bear_trend, 10),
+    ]
+    bull_score = sum(weight for _, ok, weight in bull_checks if ok)
+    bear_score = sum(weight for _, ok, weight in bear_checks if ok)
     st.markdown("### Why is a SELL / SHORT scenario being shown?")
     st.caption("The chart can display a SELL scenario because it was selected in the sidebar or because the rule-based SMC bias is bearish. This is a scenario plan, not proof that a short trade should be taken.")
     sell_reasons = [
@@ -748,39 +859,27 @@ with trade_tab:
     else:
         st.info(f"NO CONFIRMED SELL — only {bear_score}/5 checks align. If the chart is showing a sell plan, it is illustrative; wait for sweep + bearish CHOCH/BOS and a valid retest.")
     st.markdown("### SMC buy/sell decision checklist")
-    st.caption("Evidence window: last 5 candles for sweep/structure; last 10 candles for FVG/order-block candidates. A score is a checklist, not a probability of profit.")
+    st.caption("Weighted evidence score out of 100: structure 25, liquidity sweep 20, order block 20, FVG 15, volume 10 and same-timeframe EMA trend alignment 10. This is a checklist, not a probability of profit. A separate higher-timeframe feed is not currently available from the service interface.")
     buy_col, sell_col = st.columns(2)
     with buy_col:
         st.markdown("#### Potential BUY setup")
-        st.metric("Confirmation checklist", f"{bull_score}/5")
-        for label, ok in [
-            ("Sell-side liquidity sweep and reclaim", bull_sweep),
-            ("Bullish CHOCH or BOS confirmed", bull_structure),
-            ("Recent bullish FVG / order-block candidate", bull_zone),
-            ("Price in discount half of selected range", bull_location),
-            ("Overall SMC bias is bullish", levels["bias"] in ("Bullish", "Cautiously bullish")),
-        ]:
-            st.write(("✅ " if ok else "⬜ ") + label)
-        if bull_score >= 4 and bull_sweep and bull_structure:
-            st.success("BUY WATCH: evidence is aligned. Wait for a retracement/entry trigger and a candle close confirming support; do not enter solely because the score is high.")
-        elif bull_score >= 3:
+        st.metric("Confirmation checklist", f"{bull_score}/100")
+        for label, ok, weight in bull_checks:
+            st.write(("✅ " if ok else "⬜ ") + f"{label} (+{weight})")
+        if bull_score >= 70 and bull_sweep and bull_structure:
+            st.success("BUY WATCH: weighted evidence is strong and includes both a sweep and structure confirmation. Wait for a retracement/entry trigger and a candle close confirming support.")
+        elif bull_score >= 45:
             st.warning("WATCH ONLY: some bullish evidence exists, but confirmation is incomplete. Wait for sweep + bullish structure break and a defined stop.")
         else:
             st.info("NO BUY: bullish evidence is weak or incomplete. Avoid forcing a long trade.")
     with sell_col:
         st.markdown("#### Potential SELL / SHORT setup")
-        st.metric("Confirmation checklist", f"{bear_score}/5")
-        for label, ok in [
-            ("Buy-side liquidity sweep and rejection", bear_sweep),
-            ("Bearish CHOCH or BOS confirmed", bear_structure),
-            ("Recent bearish FVG / order-block candidate", bear_zone),
-            ("Price in premium half of selected range", bear_location),
-            ("Overall SMC bias is bearish", levels["bias"] in ("Bearish", "Cautiously bearish")),
-        ]:
-            st.write(("✅ " if ok else "⬜ ") + label)
-        if bear_score >= 4 and bear_sweep and bear_structure:
-            st.success("SELL/SHORT WATCH: evidence is aligned. Wait for a retracement/entry trigger and a candle close confirming resistance; short only where permitted.")
-        elif bear_score >= 3:
+        st.metric("Confirmation checklist", f"{bear_score}/100")
+        for label, ok, weight in bear_checks:
+            st.write(("✅ " if ok else "⬜ ") + f"{label} (+{weight})")
+        if bear_score >= 70 and bear_sweep and bear_structure:
+            st.success("SELL/SHORT WATCH: weighted evidence is strong and includes both a sweep and structure confirmation. Wait for a retracement/entry trigger and a candle close confirming resistance.")
+        elif bear_score >= 45:
             st.warning("WATCH ONLY: some bearish evidence exists, but confirmation is incomplete. Wait for sweep + bearish structure break and a defined stop.")
         else:
             st.info("NO SELL/SHORT: bearish evidence is weak or incomplete. If already holding a long position, use your pre-defined exit/stop rules rather than this score alone.")
